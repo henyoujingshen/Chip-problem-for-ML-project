@@ -15,7 +15,7 @@ mutation_pb = 0.35  # 突变概率
 # breeding_num  # 从父代中选择出的育种个体数量
 ts = 3  # 锦标赛一次选出ts个个体
 retention_rate = 0.8  # 繁育出子代的保留率
-np.random.seed(666)
+np.random.seed(666) # 随机数种子
 seed = int(np.random.rand(1) * 1e5)
 print(seed)
 
