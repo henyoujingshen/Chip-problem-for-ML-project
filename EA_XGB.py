@@ -7,6 +7,7 @@ from deap import base, creator, tools
 import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
+import lhsmdu
 
 
 def randomX():
@@ -19,6 +20,23 @@ def randomX():
   e = np.random.choice([8, 9, 10, 11, 12], replace=True, p=prob)
   individual = [a, b, c, d, e]
   return individual
+
+# Latin Hypercube Sampling
+cnt = 0
+def lhs_init():
+    global cnt
+    global POP_init
+    num_dimensions = 5
+    num_samples = POP_init
+    k = np.array(lhsmdu.sample(numDimensions=num_dimensions,
+                               numSamples=num_samples,
+                               randomSeed=111))
+    scale = np.array([30, 5, 25, 100, 1]).reshape(-1, 1)
+    offset = np.array([200, 20, 200, 550, 8]).reshape(-1, 1)
+    k = (np.multiply(scale, np.rint((num_dimensions - 1) * k)) + offset).T
+    res = k[cnt, :].tolist()
+    cnt = cnt + 1
+    return res
 
 # 定义个体评价函数
 def evaluate(model, individual):
@@ -47,7 +65,7 @@ def modelTrain(population, best):
             Train = np.vstack((Train, d))
 
     X = Train[:, 0:length - 1]
-    y = Train[:, length - 1:length]
+    y = Train[:, length - 1:length]*1000
     y = -np.abs(y)
     y = y.ravel()
 
@@ -72,7 +90,7 @@ def truth(population):
         Data = np.vstack((Data, d))
 
     X = Data[:, 0:length - 1]
-    y = Data[:, length - 1:length]
+    y = Data[:, length - 1:length]*1000
     y = np.abs(y)
     return y
 
@@ -121,7 +139,9 @@ if __name__ == '__main__':
     toolbox = base.Toolbox()
     # 定义个体生成函数
     # 函数别名为Individual，真实调用的是tool.initRepeat函数，该函数的传参为container, func, n，container用的是Individual类，func生成个体调用的是之前定义的randomX函数
-    toolbox.register('Individual', tools.initRepeat, creator.Individual, randomX, n=1)
+    # toolbox.register('Individual', tools.initRepeat, creator.Individual, randomX, n=1)
+    # Latin Hypercube Sampling
+    toolbox.register('Individual', tools.initRepeat, creator.Individual, lhs_init, n=1)
     # 定义种群生成函数Population
     toolbox.register('Population', tools.initRepeat, list, toolbox.Individual)
     # 定义种群中个体fitness评估执行函数
@@ -130,13 +150,15 @@ if __name__ == '__main__':
     toolbox.register("Mutation", mutation)
 
     # 初始化种群
-    POP_init = 10
+    POP_init = 30
     pop = toolbox.Population(n=POP_init)
     pop0 = pop
     modelTrain(pop0, 0)
 
     BestGeneration = []
-    for generation in range(0, 100):
+    POP_Train = []
+    POP_Train += pop0
+    for generation in range(0, 70):
         # 评估
         # 种群个体fitness评估
         toolbox.Evaluate(population=pop)
@@ -179,18 +201,31 @@ if __name__ == '__main__':
         # 大坑注意：Best是选最大，Worst是选最小！！！！
         best = tools.selBest(pop, k=1, fit_attr="fitness")
         BestGeneration.append(best[0])
+        POP_Train.append(best[0])
         # 训练
         # 依据新种群训练XGB代理模型，并使用代理模型评估个体fitness
-        modelTrain(pop0, best)
-    Generation = range(0, 100)
+        modelTrain(POP_Train, 0)
+
     Optimal = truth(BestGeneration)
 
+    Min = []
+    min0 = np.min(truth(pop0))
+    P = truth(POP_Train)
+    min = min0 # 截止目前的最小值
+    for i in range(30, len(P)):
+        if P[i] < min:
+            Min.append(float(P[i]))
+            min = float(P[i])
+        else:
+            Min.append(min)
+    Generation = range(0, 70)
     plt.figure(figsize=(20, 10))
     plt.xlabel('Generations')
     plt.ylabel('WrapRate')
     plt.legend('EA-XGB', loc='lower right')
     plt.title('EA&XGB - Generations vs WrapRate')
-    plt.plot(Generation, Optimal, 'g-', lw=2)
+    plt.plot(Generation, Min, 'g-', lw=2)
     plt.show()
+    print("Minimum Wrap Rate is: ", np.min(Min))
 
 
