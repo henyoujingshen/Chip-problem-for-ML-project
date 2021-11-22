@@ -26,8 +26,9 @@ def randomX():
 # Latin Hypercube Sampling
 def lhs_init():
     global cnt
+    global POP_init
     num_dimensions = 5
-    num_samples = 10
+    num_samples = POP_init
     k = np.array(lhsmdu.sample(numDimensions=num_dimensions,
                                numSamples=num_samples,
                                randomSeed=666))
