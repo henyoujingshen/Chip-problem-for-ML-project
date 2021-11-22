@@ -7,23 +7,22 @@ from deap import base, creator, tools
 import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
-
 import lhsmdu
 
-cnt = 0
 
 def randomX():
-    prob = [0.2, 0.2, 0.2, 0.2, 0.2]
-    # 按概率采样，size参数表示采样几次，生成多大的array，replace=True表示可以对一个点重复采样，p表示每个点的概率
-    a = np.random.choice([200, 230, 260, 290, 320], replace=True, p=prob)
-    b = np.random.choice([20, 25, 30, 35, 40], replace=True, p=prob)
-    c = np.random.choice([200, 225, 250, 275, 300], replace=True, p=prob)
-    d = np.random.choice([550, 650, 750, 850, 950], replace=True, p=prob)
-    e = np.random.choice([8, 9, 10, 11, 12], replace=True, p=prob)
-    individual = [a, b, c, d, e]
-    return individual
+  prob = [0.2, 0.2, 0.2, 0.2, 0.2]
+  # 按概率采样，size参数表示采样几次，生成多大的array，replace=True表示可以对一个点重复采样，p表示每个点的概率
+  a = np.random.choice([200, 230, 260, 290, 320], replace=True, p=prob)
+  b = np.random.choice([20, 25, 30, 35, 40], replace=True, p=prob)
+  c = np.random.choice([200, 225, 250, 275, 300], replace=True, p=prob)
+  d = np.random.choice([550, 650, 750, 850, 950], replace=True, p=prob)
+  e = np.random.choice([8, 9, 10, 11, 12], replace=True, p=prob)
+  individual = [a, b, c, d, e]
+  return individual
 
 # Latin Hypercube Sampling
+cnt = 0
 def lhs_init():
     global cnt
     global POP_init
@@ -39,16 +38,14 @@ def lhs_init():
     cnt = cnt + 1
     return res
 
-
 # 定义个体评价函数
 def evaluate(model, individual):
     dtest = xgb.DMatrix(np.array(individual))
     pred = model.predict(dtest)
-    return pred,  # 注意这个逗号，即使是单变量优化问题，也需要返回tuple
-
+    return pred, #注意这个逗号，即使是单变量优化问题，也需要返回tuple
 
 # XGBoost模型训练与保存
-def modelTrain(population, best):
+def modelTrain(population):
     # 传参：种群population
     # 训练模型并保存模型
     path = 'full_scan_5d.csv'
@@ -60,25 +57,24 @@ def modelTrain(population, best):
         for i in range(0, 5):
             d = d[d[:, i] == ind[0][i], :]
         Train = np.vstack((Train, d))
-    if best != 0:
-        for ind in best:
-            d = D
-            for i in range(0, 5):
-                d = d[d[:, i] == ind[0][i], :]
-            Train = np.vstack((Train, d))
+    # if best != 0:
+    #     for ind in best:
+    #         d = D
+    #         for i in range(0, 5):
+    #             d = d[d[:, i] == ind[0][i], :]
+    #         Train = np.vstack((Train, d))
 
     X = Train[:, 0:length - 1]
-    y = Train[:, length - 1:length]
-    y = -np.abs(y).ravel()
+    y = Train[:, length - 1:length]*1000
+    y = -np.abs(y)
+    y = y.ravel()
 
     # XGBoost代理模型 作为evaluate function
-    parameters = {'seed': 666, 'nthread': 4, 'gamma': 0, 'lambda': 0.1,
-                  'max_depth': 5, 'eta': 0.9, 'objective': 'reg:squarederror'}
-    # 参数优化器
+    parameters = {'seed': 100, 'nthread': 4, 'gamma': 0, 'lambda': 0.1,
+                  'max_depth': 10, 'eta': 0.1, 'objective': 'reg:squarederror'}
     dtrain = xgb.DMatrix(X, label=y)
     model = xgb.train(parameters, dtrain, num_boost_round=200)
     model.save_model('xgb.model')
-
 
 def truth(population):
     # 传参：种群population
@@ -94,10 +90,9 @@ def truth(population):
         Data = np.vstack((Data, d))
 
     X = Data[:, 0:length - 1]
-    y = Data[:, length - 1:length]
+    y = Data[:, length - 1:length]*1000
     y = np.abs(y)
     return y
-
 
 # 评估种群内每个个体的fitness
 def popEvaluate(population):
@@ -105,7 +100,6 @@ def popEvaluate(population):
     model.load_model('xgb.model')
     for individual in population:
         individual.fitness.values = evaluate(model, individual)
-
 
 # 个体基因突变函数
 def mutation(individual, pb):
@@ -116,11 +110,11 @@ def mutation(individual, pb):
     d = np.random.choice([550, 650, 750, 850, 950], replace=True, p=prob)
     e = np.random.choice([8, 9, 10, 11, 12], replace=True, p=prob)
 
-    t0 = np.random.choice([0, 1], replace=False, p=[1 - pb, pb])
-    t1 = np.random.choice([0, 1], replace=False, p=[1 - pb, pb])
-    t2 = np.random.choice([0, 1], replace=False, p=[1 - pb, pb])
-    t3 = np.random.choice([0, 1], replace=False, p=[1 - pb, pb])
-    t4 = np.random.choice([0, 1], replace=False, p=[1 - pb, pb])
+    t0 = np.random.choice([0, 1], replace=False, p=[1-pb, pb])
+    t1 = np.random.choice([0, 1], replace=False, p=[1-pb, pb])
+    t2 = np.random.choice([0, 1], replace=False, p=[1-pb, pb])
+    t3 = np.random.choice([0, 1], replace=False, p=[1-pb, pb])
+    t4 = np.random.choice([0, 1], replace=False, p=[1-pb, pb])
     if t0 == 1:
         individual[0][0] = a
     if t1 == 1:
@@ -132,6 +126,21 @@ def mutation(individual, pb):
     if t4 == 1:
         individual[0][4] = e
     return individual
+
+def sampleSelect(candidate_population, train_population):
+    # 从种群中选择下一个采样点
+    # 和贝叶斯优化的采集函数具有相同功能，平衡贪心和探索
+    l = len(train_population)
+    # 在模型较小时选择一定程度不相信模型预测，模型较大时相信
+    if l < 50:
+        samples = tools.selBest(candidate_population, k=8, fit_attr="fitness")
+        sample = tools.selRandom(samples, 1)
+    elif l < 80:
+        samples = tools.selBest(candidate_population, k=3, fit_attr="fitness")
+        sample = tools.selRandom(samples, 1)
+    else:
+        sample = tools.selBest(candidate_population, k=1, fit_attr="fitness")
+    return sample
 
 
 def ranking(result):
@@ -161,13 +170,15 @@ if __name__ == '__main__':
     toolbox.register("Mutation", mutation)
 
     # 初始化种群
-    POP_init = 10
-    pop = toolbox.Population(POP_init)
+    POP_init = 30
+    pop = toolbox.Population(n=POP_init)
     pop0 = pop
-    modelTrain(pop0, 0)
+    modelTrain(pop0)
 
     BestGeneration = []
-    for generation in range(0, 100):
+    POP_Train = []
+    POP_Train += pop0
+    for generation in range(0, 70):
         # 评估
         # 种群个体fitness评估
         toolbox.Evaluate(population=pop)
@@ -186,8 +197,8 @@ if __name__ == '__main__':
 
         # 均匀交叉
         pop_cross = [toolbox.clone(individual) for individual in pop_select]
-        for i in range(0, len(pop_cross) - len(pop_cross) % 2, 2):
-            deap.tools.cxUniform(ind1=pop_cross[i], ind2=pop_cross[i + 1], indpb=0.6)
+        for i in range(0, len(pop_cross)-len(pop_cross)%2, 2):
+            deap.tools.cxUniform(ind1=pop_cross[i], ind2=pop_cross[i+1], indpb=0.6)
             # tools.cxTwoPoint(a, b)
             # tools.cxOnePoint(a, b)
 
@@ -203,28 +214,39 @@ if __name__ == '__main__':
         # 组合
         # pop = pop + pop_children
         pop = pop_children
-        pop = tools.selBest(pop, k=round(len(pop) * 0.8), fit_attr="fitness")
+        pop = tools.selBest(pop, k=round(len(pop)*0.8), fit_attr="fitness")
 
         # 采样
         # 选择种群中的最佳点作为下一个CAE仿真采样点
         # 大坑注意：Best是选最大，Worst是选最小！！！！
-        best = tools.selBest(pop, k=1, fit_attr="fitness")
-        BestGeneration.append(best[0])
+        sample = sampleSelect(pop, POP_Train)
+        BestGeneration.append(sample[0])
+        POP_Train.append(sample[0])
         # 训练
-        # 依据新种群训练XGB代理模型，并使用代理模型评估个体fitness
-        modelTrain(pop0, best)
-    Generation = range(0, 100)
-    Optimal = truth(BestGeneration)
+        # 依据新增加的采样点训练XGB代理模型
+        modelTrain(POP_Train)
 
+    SamplePoints = truth(BestGeneration)
+
+    Min = []
+    min0 = np.min(truth(pop0))
+    P = truth(POP_Train)
+    min = min0  # 截止目前的最小值
+    for i in range(30, len(P)):
+        if P[i] < min:
+            Min.append(float(P[i]))
+            min = float(P[i])
+        else:
+            Min.append(min)
+    Generation = range(0, 70)
     plt.figure(figsize=(20, 10))
     plt.xlabel('Generations')
     plt.ylabel('WrapRate')
     plt.legend('EA-XGB', loc='lower right')
     plt.title('EA&XGB - Generations vs WrapRate')
-    plt.plot(Generation, Optimal, 'g-', lw=2)
+    plt.plot(Generation, Min, 'g-', lw=2)
     plt.show()
-
-    res = 1000 * np.min(Optimal)
-    print(res)
-    print("rank=" + str(ranking(res)))
+    optimum = np.min(Min)
+    print("Minimum Wrap Rate is: ", optimum)
+    print("rank=" + str(ranking(optimum)))
 
