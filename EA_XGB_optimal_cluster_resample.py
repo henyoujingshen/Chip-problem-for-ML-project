@@ -138,7 +138,7 @@ def popEvaluate(population):
         individual.fitness.values = np.array(pop_pred[i]).ravel()
     return pop_array, pop_pred
 
-def sampleSelect(candidate_population, sample_Train):
+def sampleSelect(pop_array, pop_pred, sample_Train):
     """
     从现存种群中选出下一个采样点，本函数和贝叶斯优化的采集函数具有类似的功能，需要对贪心和探索进行平衡。
     目前的思路是随着训练模型的样本量逐渐增加，选择更相信模型预测结果。样本量小时在前5名
@@ -146,11 +146,6 @@ def sampleSelect(candidate_population, sample_Train):
     :param train_population: 训练代理模型的种群
     :return: 下一个采样点
     """
-    global num_cluster
-    global threshold
-    pop = candidate_population
-
-    pop_array, pop_pred = popEvaluate(pop)
     POP = np.hstack((pop_array, pop_pred.reshape(-1, 1)))  # 适应度和特征拼起来的array
 
     sample_num = len(sample_Train)
