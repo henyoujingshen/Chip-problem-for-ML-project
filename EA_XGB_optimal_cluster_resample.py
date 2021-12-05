@@ -13,7 +13,7 @@ import lhsmdu
 from sklearn.cluster import KMeans
 
 sample_init = 20  # 初始代理模型样本点大小
-pop_init = 200  # 初始种群大小
+pop_init = 300  # 初始种群大小
 computations = 100  # 总共的计算资源(CAE)
 num_cluster = [4, 1]  # 种群聚类个数
 threshold = [60, 100]
@@ -138,7 +138,7 @@ def popEvaluate(population):
         individual.fitness.values = np.array(pop_pred[i]).ravel()
     return pop_array, pop_pred
 
-def sampleSelect(candidate_population, sample_num):
+def sampleSelect(candidate_population, sample_Train):
     """
     从现存种群中选出下一个采样点，本函数和贝叶斯优化的采集函数具有类似的功能，需要对贪心和探索进行平衡。
     目前的思路是随着训练模型的样本量逐渐增加，选择更相信模型预测结果。样本量小时在前5名
@@ -153,44 +153,55 @@ def sampleSelect(candidate_population, sample_num):
     pop_array, pop_pred = popEvaluate(pop)
     POP = np.hstack((pop_array, pop_pred.reshape(-1, 1)))  # 适应度和特征拼起来的array
 
+    sample_num = len(sample_Train)
     if sample_num < threshold[0]:
-        sample_select = np.empty((0, 5))
-        Clusters = []
-        Cluster_Mean = []
         cluster = num_cluster[0]
-        kms = KMeans(init='k-means++', n_clusters=cluster, random_state=1, tol=1e-3)
-        pred = kms.fit_predict(POP)
-        for i in range(cluster):
-            c = POP[pred[0:] == i, 0:6]
-            Clusters.append(c)
-            Cluster_Mean.append(np.mean(c))
-        c_index = Cluster_Mean.index(np.min(Cluster_Mean))
-        cluster_select = Clusters[c_index]
-        index = np.argsort(cluster_select[:, 5])
-        C = cluster_select[index, :]
-        select = C[0:4, 0:5]
-        select.reshape(1, -1)
-        sample_select = np.vstack((sample_select, select))
-        return sample_select
-    elif sample_num <= threshold[1]:
-        sample_select = np.empty((0, 5))
-        Clusters = []
-        Cluster_Mean = []
+        select_index = 0
+        resample_round = 1
+    else:
         cluster = num_cluster[1]
-        kms = KMeans(init='k-means++', n_clusters=cluster, random_state=1, tol=1e-3)
-        pred = kms.fit_predict(POP)
-        for i in range(cluster):
-            c = POP[pred[0:] == i, 0:6]
-            Clusters.append(c)
-            Cluster_Mean.append(np.mean(c))
-        c_index = Cluster_Mean.index(np.min(Cluster_Mean))
-        cluster_select = Clusters[c_index]
-        index = np.argsort(cluster_select[:, 5])
-        C = cluster_select[index, :]
-        select = C[0, 0:5]
-        select.reshape(1, -1)
-        sample_select = np.vstack((sample_select, select))
-        return sample_select
+        select_index = np.arange(0, 4)
+        resample_round = len(select_index)
+
+    sample_select = np.empty((0, 5))
+    Clusters = []
+    Cluster_Mean = []
+    kms = KMeans(init='k-means++', n_clusters=cluster, random_state=1, tol=1e-3)
+    pred = kms.fit_predict(POP)
+    for i in range(cluster):
+        c = POP[pred[0:] == i, 0:6]
+        Clusters.append(c)
+        Cluster_Mean.append(np.mean(c))
+    c_index = Cluster_Mean.index(np.min(Cluster_Mean))
+    cluster_select = Clusters[c_index]
+    index = np.argsort(cluster_select[:, -1])
+    C = cluster_select[index, :]
+    select = C[select_index, 0:-1]
+
+    # 样本点去重：如果重复则选择次优的点
+    for k in range(resample_round):
+        default_select = 0
+        if resample_round == 1:
+            sub_select = select
+        else:
+            sub_select = select[k, :]
+        while ~np.any(sample_Train - sub_select, axis=1).all():
+            default_select += 1
+            if default_select < C.shape[0]:
+                sub_select = C[default_select, :-1]
+                if resample_round == 1:
+                    select = sub_select
+                else:
+                    select[k, :] = sub_select
+            else:
+                print("Too many repeated sample attempts, fail to select a new point.")
+                select[k] = C[0, :-1]
+                break
+
+    select.reshape(1, -1)
+    sample_select = np.vstack((sample_select, select))
+    return sample_select
+
 
 def ranking(result):
     """
@@ -291,7 +302,7 @@ def iterate(Sample_Train, Sample_Points, Data, num_boost_round):
         # 采样
         # 选择种群中的最佳点作为下一个CAE仿真采样点
         # 大坑注意：Best是选最小，Worst是选最大(因为初始化时优化问题设置的是最小为优)
-        sample = sampleSelect(pop, len(Sample_Train))  # 选择下一个采样点
+        sample = sampleSelect(pop, Sample_Train)  # 选择下一个采样点
         Sample_Points = np.vstack((Sample_Points, sample))
         Sample_Train = np.vstack((Sample_Train, sample))
         # 训练
