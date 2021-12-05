@@ -171,7 +171,7 @@ def sampleSelect(candidate_population, sample_Train):
         C = C[np.argsort(C[:, -1]), :]
         select = C[0, :-1]
 
-        # 样本点去重：如果重复则选择次优的点
+        # 样本点去重：如果重复则选择次优的点；如果实在找不到就选最优摆烂
         default_select = 0
         # equal_mat = sample_Train - select
         # equal_res = np.any(equal_mat, axis=1)
