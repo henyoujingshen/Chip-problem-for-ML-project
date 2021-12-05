@@ -4,4 +4,4 @@ ML-final project for chip problem
 
 EA_XGB_optimal_cluster 是聚多个类，选最好类的前几名
 
-EA_XGB_optimal_point 是聚多个类，选择每个类的最优点 
+EA_XGB_cluster_optimal_point 是聚多个类，选择每个类的最优点 
