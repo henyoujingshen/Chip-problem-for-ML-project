@@ -42,3 +42,7 @@ EA_XGB_cluster_OptPoint_v3
   mutation(individual, pb)： 进行矩阵化操作提速；同时加入无效突变更正机制（提速20%）
   
   iterate(Sample_Train, Sample_Points, Data, num_boost_round): 减少了一次种群clone（提速1%）
+  
+  新增了方法：
+  
+  monte_carlo_sampling(num_samples): 随机采样，用于初始种群的生成
