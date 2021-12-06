@@ -37,12 +37,18 @@ EA_XGB_cluster_optimal_point_resample 聚多个类，选择每个类的最优点
 
 EA_XGB_cluster_OptPoint_v3
 
-  更新了方法：
+  更新了方法： （无需改变调用）
   
-  mutation(individual, pb)： 进行矩阵化操作提速；同时加入无效突变更正机制（提速20%）
+  mutation(individual, pb)： 进行矩阵化操作提速；增加了无效突变重采样；
   
-  iterate(Sample_Train, Sample_Points, Data, num_boost_round): 减少了一次种群clone（提速1%）
+  iterate(Sample_Train, Sample_Points, Data, num_boost_round): 减少了一次种群clone
   
   新增了方法：
   
   monte_carlo_sampling(num_samples): 随机采样，用于初始种群的生成
+  
+  更改方法（仅更名）：
+  
+  lhs(num_samples):
+  
+  -> latin_hypercube_sampling(num_samples):
