@@ -9,12 +9,12 @@ import pickle
 
 from sklearn.model_selection import train_test_split
 
-import stacking_model_v2 as mt
+import stacking_model_polynomial as mt
 
 # 超参数定义
 from sklearn.cluster import KMeans
 
-sample_init = 100  # 初始代理模型样本点大小
+sample_init = 20  # 初始代理模型样本点大小
 pop_init = 200  # 初始种群大小
 computations = 100  # 总共的计算资源(CAE)
 num_cluster = [1, 1]  # 种群聚类个数
@@ -35,13 +35,9 @@ parameters = {'seed': 100, 'nthread': -1, 'gamma': 0, 'lambda': 6,
                   'max_depth': 6, 'eta': 0.15, 'objective': 'reg:squarederror'}
 num_boost_round = 250
 
+# Latin Hypercube Sampling
+cnt_p = 0
 
-def custom_function(iter, maxiter):
-    rang = [0.01, 0.99]
-    x = (rang[1] * iter + rang[0] * (maxiter - iter) - (rang[0] + rang[1]) * maxiter / 2) / maxiter * 10 / (
-                rang[1] - rang[0])
-    fx = 1.0 / (1 + np.exp(-x))
-    return fx
 
 def mutation(individual, pb):
     """
@@ -71,8 +67,7 @@ def mutation(individual, pb):
     individual[0] = result
     return individual
 
-# Latin Hypercube Sampling
-cnt_p = 0
+
 def pop_lhs_init():
     global cnt_p
     global k_p
@@ -121,6 +116,7 @@ def findSamples_nofor(sample_array, Data):
     y = Samples[:, -1] * 1000
     return X, y
 
+
 def popEvaluate(model_num, weight, population):
     """
     对种群内所有个体的适应度进行评估
@@ -134,8 +130,7 @@ def popEvaluate(model_num, weight, population):
         Pred = np.empty((len(population), 1))
         for i in range(5):
             # Base model here
-            with open('poly' + str(i) + '.model', 'rb') as file:
-                model = pickle.load(file)
+            model = pickle.load('poly' + str(i) + '.model')
             pop_array = np.vstack((population[0:]))
             pop_pred = np.abs(model.predict(pop_array)) * weight[i]
 
@@ -232,6 +227,7 @@ def sampleSelect(pop_array, pop_pred, sample_Train):
     sample_select = np.vstack((sample_select, select))
     return sample_select
 
+
 def ranking(result):
     """
     获取某个体适应度整个真实搜索域中的排名
@@ -251,6 +247,7 @@ def ranking(result):
     new_arr = np.sort(np.append(np.array(benchmark), result))
     index = np.where(new_arr == result)
     return int(np.min(index))
+
 
 def resultDisp(Sample_Points, Sample_Init, generations, Data):
     """
@@ -295,11 +292,14 @@ def resultDisp(Sample_Points, Sample_Init, generations, Data):
     print("rank = ", rank)
     return rank
 
+
 def iterate(Sample_Train, Sample_Points, Data, num_boost_round):
     # 初始化种群
     pop = toolbox.Population(n=pop_init)  # 种群定义为pop
     global cnt_p
     cnt_p = 0
+    if generations >= 100:
+        print("Too many initial points.")
     for generation in range(0, generations):
         # 训练
         # 采样点训练XGB代理模型
@@ -340,6 +340,7 @@ def iterate(Sample_Train, Sample_Points, Data, num_boost_round):
     rank = resultDisp(Sample_Points, Sample_Init, generations, Data)
     return rank
 
+
 if __name__ == '__main__':
     k_p = monte_carlo_sampling(pop_init)
     path = '3output_5d.csv'
@@ -365,10 +366,10 @@ if __name__ == '__main__':
     Sample_Points = np.empty((0, 5))
 
     # Only for debug mode
-    original_data = findSamples_nofor(Sample_Train, Data)
-    original_data = np.hstack((original_data[0], original_data[1].reshape(-1, 1)))
-    lhs_train, lhs_test = train_test_split(original_data, test_size=0.2)
-    lhs_train, lhs_test = np.array(lhs_train), np.array(lhs_test)
+    # original_data = findSamples_nofor(Sample_Train, Data)
+    # original_data = np.hstack((original_data[0], original_data[1].reshape(-1, 1)))
+    # lhs_train, lhs_test = train_test_split(original_data, test_size=0.2)
+    # lhs_train, lhs_test = np.array(lhs_train), np.array(lhs_test)
 
     Rank = []
     for i in range(10):
@@ -376,7 +377,6 @@ if __name__ == '__main__':
         Rank.append(rank)
         print(i)
     print(Rank)
-    # print("Rank List for 10 cycles:", Rank)
     print("Mean value of rank:", np.mean(Rank))
     name = ['rank']
     test = pd.DataFrame(columns=name, data=Rank)  # 数据有三列，列名分别为one,two,three
