@@ -228,17 +228,17 @@ def modelTrain(Sample_Train, Data, parameters, num_boost_round, generation):
             vb = n
             print(np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (np.std(vb) * np.std(vc)))
         # corrcoef得到相关系数矩阵（向量的相似程度）
-            DST_MASS[i-1,0]=1/np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (np.std(vb) * np.std(vc))
+            DST_MASS[i-1,0]=np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (np.std(vb) * np.std(vc))
 
         for i in range(3):
             y_pred = q[i]
             y_true = n
-            DST_MASS[i-1, 1] = max_error(y_true, y_pred)
+            DST_MASS[i-1, 1] =1/ max_error(y_true, y_pred)
 
         for i in range(3):
             y_pred = q[i]
             y_true = n
-            DST_MASS[i-1, 2] = mean_squared_error(y_true, y_pred)
+            DST_MASS[i-1, 2] = 1/mean_squared_error(y_true, y_pred)
 
         DST_MASS_TRANSFORMED=np.ones((3,3))
         for i in range(3):
