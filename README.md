@@ -52,3 +52,9 @@ EA_XGB_cluster_OptPoint_v3
   lhs(num_samples):
   
   -> latin_hypercube_sampling(num_samples):
+  
+  
+权重按照DST进行调整：以以下变量为参考
+global Valid_Pred
+    global Valid_Y
+    global Valid_Error
