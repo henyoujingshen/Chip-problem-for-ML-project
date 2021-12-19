@@ -1,0 +1,56 @@
+def mutGaussian(individual, mu, sigma, indpb, xu, xl):
+    # 12.20被苗子良改过
+    """This function applies a gaussian mutation of mean *mu* and standard
+    deviation *sigma* on the input individual. This mutation expects a
+    :term:`sequence` individual composed of real valued attributes.
+    The *indpb* argument is the probability of each attribute to be mutated.
+
+    :param individual: Individual to be mutated.
+    :param mu: Mean or :term:`python:sequence` of means for the
+               gaussian addition mutation.
+    :param sigma: Standard deviation or :term:`python:sequence` of
+                  standard deviations for the gaussian addition mutation.
+    :param indpb: Independent probability for each attribute to be mutated.
+    :returns: A tuple of one individual.
+
+    This function uses the :func:`~random.random` and :func:`~random.gauss`
+    functions from the python base :mod:`random` module.
+    """
+    size = len(individual[0])
+    if not isinstance(mu, Sequence):
+        mu = repeat(mu, size)
+    elif len(mu) < size:
+        raise IndexError("mu must be at least the size of individual: %d < %d" % (len(mu), size))
+    if not isinstance(sigma, Sequence):
+        sigma = repeat(sigma, size)
+    elif len(sigma) < size:
+        raise IndexError("sigma must be at least the size of individual: %d < %d" % (len(sigma), size))
+
+    for i, m, s in zip(range(size), mu, sigma):
+        if random.random() < indpb:
+            individual[0][i] += np.clip(random.gauss(m, s), a_min=xl, a_max=xu)
+
+    return individual,
+    
+    def cxBlend(ind1, ind2, alpha, xu, xl):
+    # 12.20被苗子良改过
+    """Executes a blend crossover that modify in-place the input individuals.
+    The blend crossover expects :term:`sequence` individuals of floating point
+    numbers.
+
+    :param ind1: The first individual participating in the crossover.
+    :param ind2: The second individual participating in the crossover.
+    :param alpha: Extent of the interval in which the new values can be drawn
+                  for each attribute on both side of the parents' attributes.
+    :returns: A tuple of two individuals.
+
+    This function uses the :func:`~random.random` function from the python base
+    :mod:`random` module.
+    """
+    for i, (x1, x2) in enumerate(zip(ind1[0], ind2[0])):
+        gamma = (1. + 2. * alpha) * random.random() - alpha
+
+        ind1[0][i] = np.clip((1. - gamma) * x1 + gamma * x2, a_min=xl, a_max=xu)
+        ind2[0][i] = np.clip(gamma * x1 + (1. - gamma) * x2, a_min=xl, a_max=xu)
+
+    return ind1, ind2
