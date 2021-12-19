@@ -14,11 +14,12 @@ import stacking_model_v5 as mt
 # 超参数定义
 from sklearn.cluster import KMeans
 
-sample_init = 24  # 初始代理模型样本点大小
+
 pop_init = 400  # 初始种群大小
 num_cluster = [1, 1]  # 种群聚类个数
 threshold = [60, 100]
-cross_pb = 0.7  # 交叉概率
+
+cross_pb = 0.75  # 交叉概率
 select_num = 250  # 从父代中选择出的育种个体数量
 
 ts = 2  # 锦标赛一次选出ts个个体
@@ -33,37 +34,38 @@ num_boost_round = 250
 # Base model settings
 enabled_model = np.array([
     'XGBoost',
-    # 'Polynomial',
-    'RandomForest',
+    'Polynomial',
+    # 'RandomForest',
     'AdaBoost',
 ])
 
 # Test problem settings
 problem_param = {
-    # 'name': 'rosenbrock',
-    'name': 'rastrigin',
+    'name': 'rosenbrock',
+    'dimension': 6,
+    'range': [-5, 10],
+
+    # 'name': 'rastrigin',
+    # 'dimension': 8,
+    # 'range': [-5, 5],
+
     # 'name': 'griewank'
-
-    # 'dimension': 6,
-    'dimension': 8,
     # 'dimension': 10,
-
-    # 'range': [-5, 10],
-    'range': [-5, 5],
     # 'range': [-600, 600],
 }
 
 # Mutation settings
 mutation_param = {
-    'mutation_prob': 0.3,
+    'mutation_prob': 0.4,
+    'p': 3,
     'eta': 10,
-    'p': 3,  # p~[2, 5]
     'xl': problem_param['range'][0],
     'xu': problem_param['range'][1],
 }
 
-computations = int(problem_param['dimension'] * 10)
-generations = computations - sample_init  # 迭代次数
+computations = int(problem_param['dimension']) * 10
+sample_init = int(problem_param['dimension']) * 4
+generations = computations - sample_init
 
 def testFunc(sample_array):
     """
@@ -90,6 +92,39 @@ def testFunc(sample_array):
     return X, y
 
 
+# def mutation(individual):
+#     """
+#     定义个体突变函数，在toolbox中注册为Mutation函数
+#     polynomial mutation
+#     :param individual: 进行突变操作的个体
+#     :return: 完成突变操作后的个体
+#     """
+#
+#     eta = mutation_param['eta']
+#     xl = mutation_param['xl']
+#     xu = mutation_param['xu']
+#     xp = np.array(individual[0])  # x parents
+#     u = np.random.rand(1)
+#     prob = np.random.rand(1)
+#
+#     if prob > mutation_param['mutation_prob']:
+#         return individual
+#     else:
+#         if u <= 0.5:
+#             sigma = 2 * u + (1 - 2 * u) * np.power(1 - (xp - xl) / (xu - xl), eta + 1) - 1
+#             Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
+#         else:
+#             sigma = 1 - np.power(2 * (1 - u) + (2 * u - 1) * (1 - (xu - xp) / (xu - xl)), eta + 1)
+#             Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
+#
+#         xo = xp + Sigma * (xu - xl)
+#         xo = np.clip(xo, a_min=xl, a_max=xu)
+#         individual[0] = xo.tolist()
+#         if np.isnan(xo).any():
+#             print("failed")
+#         return individual
+
+
 def mutation(individual):
     """
     定义个体突变函数，在toolbox中注册为Mutation函数
@@ -104,20 +139,21 @@ def mutation(individual):
     xp = np.array(individual[0])  # x parents
     dim = problem_param['dimension']
 
-    rand = np.random.rand(dim)
-    prob = np.random.random()
+    # rand = np.random.rand(dim)
+    rand = np.random.rand(1) * np.ones(dim)
+    prob = np.random.rand(1)
 
-    if prob > mutation_param['mutation_prob']:
-        return individual
-    else:
+    if prob <= mutation_param['mutation_prob']:
         sigma = np.zeros(2 * dim)
         delta_1 = (xp - xl) / (xu - xl)
         delta_2 = (xu - xp) / (xu - xl)
 
         val_1 = 2.0 * rand + (1.0 - 2.0 * rand) * np.power(1 - delta_1, eta + 1)
-        sigma[:dim] = np.power(val_1, (1.0 / (eta + 1))) - 1.0
+        # sigma[:dim] = np.power(val_1, (1.0 / (eta + 1))) - 1.0
+        sigma[:dim] = np.sign(val_1) * np.power(np.abs(val_1), 1.0 / (eta + 1)) - 1.0
         val_2 = 2.0 * (1.0 - rand) + (2.0 * rand - 1.0) * np.power(1 - delta_2, eta + 1)
-        sigma[dim:] = 1.0 - np.power(val_2, (1.0 / (eta + 1)))
+        # sigma[dim:] = 1.0 - np.power(val_2, (1.0 / (eta + 1)))
+        sigma[dim:] = 1.0 - np.sign(val_2) * np.power(np.abs(val_2), 1.0 / (eta + 1))
 
         index = np.rint(rand) + np.arange(0, 2 * dim, 2)
         sigma = sigma[index.astype(int)]
@@ -128,16 +164,18 @@ def mutation(individual):
         individual[0] = xo.tolist()
         if np.isnan(xo).any():
             print("failed")
-        return individual
+    return individual
 
 
 def crossover(ind1, ind2, pb):
-    x1 = 0.5 * ((1 + pb) * np.array(ind1[0]) + (1 - pb) * np.array(ind2[0]))
-    x2 = 0.5 * ((1 - pb) * np.array(ind1[0]) + (1 + pb) * np.array(ind2[0]))
-    ind1[0] = x1.tolist()
-    ind2[0] = x2.tolist()
-    if (np.isnan(x1).any() or np.isnan(x2).any()):
-        print("failed")
+    rand = np.random.rand(1)
+    if rand <= pb:
+        x1 = 0.5 * ((1 + pb) * np.array(ind1[0]) + (1 - pb) * np.array(ind2[0]))
+        x2 = 0.5 * ((1 - pb) * np.array(ind1[0]) + (1 + pb) * np.array(ind2[0]))
+        ind1[0] = x1.tolist()
+        ind2[0] = x2.tolist()
+        if (np.isnan(x1).any() or np.isnan(x2).any()):
+            print("failed")
     return ind1, ind2
 
 
@@ -181,15 +219,14 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
     :param population: 需要进行适应度评估的种群
     :return: /
     """
-    weight = weight  # weight是k-fold模型的权重
     model_num = model_num
     base_model_weight = base_model_weight
     if model_num == 4:
         pop_array = np.vstack((population[0:]))
         dtest = xgb.DMatrix(pop_array)
-        Pred_xgb = np.zeros((len(population), 1))
-        Pred_poly = np.zeros((len(population), 1))
-        Pred_knn = np.zeros((len(population), 1))
+        Pred_xgb = np.empty((len(population), 1))
+        Pred_poly = np.empty((len(population), 1))
+        Pred_knn = np.empty((len(population), 1))
 
         for i in range(5):
             # xgb base model
@@ -211,22 +248,16 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
             Pred_xgb = np.hstack((Pred_xgb, pop_pred_xgb))
             Pred_poly = np.hstack((Pred_poly, pop_pred_poly))
             Pred_knn = np.hstack((Pred_knn, pop_pred_knn.reshape(-1, 1)))
-
         Pred_xgb = Pred_xgb[:, 1:]
         Pred_poly = Pred_poly[:, 1:]
         Pred_knn = Pred_knn[:, 1:]
 
-        # Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1)
-        # Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1)
-        # Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1)
-
-        Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1) * base_model_weight[0]
-        Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1) * base_model_weight[1]
-        Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1) * base_model_weight[2]
+        Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1)
+        Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1)
+        Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1)
 
         # Meta model here
         meta_input = np.hstack((Pred_xgb, Pred_poly, Pred_knn))
-        # meta_input = Pred_xgb + Pred_poly + Pred_knn
         meta = xgb.Booster()
         meta.load_model('meta_xgb.model')
         dmeta = xgb.DMatrix(meta_input)
@@ -255,7 +286,8 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
         pop_pred_knn = np.abs(model_knn.predict(pop_array)).reshape(-1, 1)
 
         # 各base model赋权重
-        pop_pred = base_model_weight[0] * pop_pred_xgb + base_model_weight[1] * pop_pred_poly + base_model_weight[2] * pop_pred_knn
+        pop_pred = base_model_weight[0] * pop_pred_xgb + base_model_weight[1] * pop_pred_poly + base_model_weight[
+            2] * pop_pred_knn
 
         for i, individual in zip(range(len(population)), population):
             individual.fitness.values = np.array(pop_pred[i]).ravel()
@@ -418,6 +450,12 @@ def iterate(Sample_Train, Sample_Points, num_boost_round):
         pop_f = tools.selBest(pop, k=pop_init - select_num)
         pop = pop_f + pop_select
     result, optimum = resultDisp(Sample_Points, Sample_Init, generations)
+
+    X, y = testFunc(Sample_Train)
+    Samples_Disp = np.hstack((X, y))
+    Samples_Disp = pd.DataFrame(data=Samples_Disp)
+    Samples_Disp.to_csv('./Samples.csv', encoding='gbk')
+
     return result, optimum
 
 
@@ -449,7 +487,7 @@ if __name__ == '__main__':
 
     Optimum = []
     Resdisp = []
-    for i in range(10):
+    for i in range(5):
         result, optimum = iterate(Sample_Train, Sample_Points, num_boost_round)
         Optimum.append(optimum)
         Resdisp.append(optimum[-1])
@@ -457,6 +495,6 @@ if __name__ == '__main__':
         print(i)
 
     print("Mean value:", np.mean(Resdisp))
-    print("Variance value:", np.var(Resdisp))
+    print("Variance value:" + str(np.sqrt(np.var(Resdisp))) + "^2")
     test = pd.DataFrame(data=Optimum, columns=result.columns.values.tolist())  # 数据有三列，列名分别为one,two,three
     test.to_csv('./Opt.csv', encoding='gbk')
