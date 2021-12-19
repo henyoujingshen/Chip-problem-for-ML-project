@@ -16,11 +16,8 @@ from sklearn.cluster import KMeans
 
 sample_init = 24  # 初始代理模型样本点大小
 pop_init = 400  # 初始种群大小
-computations = 60  # 总共的计算资源(CAE)
 num_cluster = [1, 1]  # 种群聚类个数
 threshold = [60, 100]
-# generations = int((threshold[0] - sample_init)/num_cluster[0] + (threshold[1] - threshold[0])/num_cluster[1])
-generations = computations - sample_init  # 迭代次数
 cross_pb = 0.7  # 交叉概率
 select_num = 250  # 从父代中选择出的育种个体数量
 
@@ -58,13 +55,15 @@ problem_param = {
 
 # Mutation settings
 mutation_param = {
-    'mutation_prob': 0.4,
+    'mutation_prob': 0.3,
     'eta': 10,
     'p': 3,  # p~[2, 5]
     'xl': problem_param['range'][0],
     'xu': problem_param['range'][1],
 }
 
+computations = int(problem_param['dimension'] * 10)
+generations = computations - sample_init  # 迭代次数
 
 def testFunc(sample_array):
     """
