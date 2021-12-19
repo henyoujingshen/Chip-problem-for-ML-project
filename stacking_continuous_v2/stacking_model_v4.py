@@ -52,7 +52,7 @@ def perfTest(X_train, y_train, X_valid, y_valid):
     model_xgb = xgb.train(parameters, dtrain, num_boost_round=200)
     dvalid = xgb.DMatrix(X_valid)
     pred_xgb = model_xgb.predict(dvalid).reshape(-1, 1)
-    error_xgb = mean_absolute_error(pred_xgb, y_valid).reshape(-1, 1)
+    error_xgb = mean_absolute_error(y_valid, pred_xgb).reshape(-1, 1)
 
     # poly2
     model_poly2 = Pipeline(steps=[
@@ -61,7 +61,7 @@ def perfTest(X_train, y_train, X_valid, y_valid):
     ])
     model_poly2.fit(X_train, y_train)
     pred_poly2 = model_poly2.predict(X_valid).reshape(-1, 1)
-    error_poly2 = mean_absolute_error(pred_poly2, y_valid).reshape(-1, 1)
+    error_poly2 = mean_absolute_error(y_valid, pred_poly2).reshape(-1, 1)
 
     # poly3
     model_poly3 = Pipeline(steps=[
@@ -70,31 +70,31 @@ def perfTest(X_train, y_train, X_valid, y_valid):
     ])
     model_poly3.fit(X_train, y_train)
     pred_poly3 = model_poly3.predict(X_valid).reshape(-1, 1)
-    error_poly3 = mean_absolute_error(pred_poly3, y_valid).reshape(-1, 1)
+    error_poly3 = mean_absolute_error(y_valid, pred_poly3).reshape(-1, 1)
 
     # knn
     model_knn = KNeighborsRegressor(n_neighbors=6)
     model_knn.fit(X_train, y_train)
     pred_knn = model_knn.predict(X_valid).reshape(-1, 1)
-    error_knn = mean_absolute_error(pred_knn, y_valid).reshape(-1, 1)
+    error_knn = mean_absolute_error(y_valid, pred_knn).reshape(-1, 1)
 
     # decesion tree
     model_dt = DecisionTreeRegressor(random_state=0)
     model_dt.fit(X_train, y_train)
     pred_dt = model_dt.predict(X_valid).reshape(-1, 1)
-    error_dt = mean_absolute_error(pred_dt, y_valid).reshape(-1, 1)
+    error_dt = mean_absolute_error(y_valid, pred_dt).reshape(-1, 1)
 
     # adaboost
     model_ada = AdaBoostRegressor(random_state=0, n_estimators=200, loss='exponential', learning_rate=0.5)
     model_ada.fit(X_train, y_train)
     pred_ada = model_ada.predict(X_valid).reshape(-1, 1)
-    error_ada = mean_absolute_error(pred_ada, y_valid).reshape(-1, 1)
+    error_ada = mean_absolute_error(y_valid, pred_ada).reshape(-1, 1)
 
     # ramdom forest
     model_rf = RandomForestRegressor(max_depth=3, random_state=0, n_jobs=-1, ccp_alpha=0)
     model_rf.fit(X_train, y_train)
     pred_rf = model_rf.predict(X_valid).reshape(-1, 1)
-    error_rf = mean_absolute_error(pred_rf, y_valid).reshape(-1, 1)
+    error_rf = mean_absolute_error(y_valid, pred_rf).reshape(-1, 1)
 
     Pred = np.hstack((pred_xgb, pred_ada, pred_rf, pred_poly3, pred_poly2, pred_dt, pred_knn))
     Error = np.hstack((error_xgb, error_ada, error_rf, error_poly3, error_poly2, error_dt, error_knn))
@@ -163,12 +163,12 @@ def baseModel(Sample_Train, parameters, num_boost_round, index):
         if i == 0:
             dvalid = xgb.DMatrix(X_valid)
             pred = model[i].predict(dvalid).reshape(-1, 1)
-            error = mean_absolute_error(pred, y_valid).reshape(-1, 1)
+            error = mean_absolute_error(y_valid, pred).reshape(-1, 1)
             valid_pred.append(pred)
             valid_error.append(error)
         else:
             pred = model[i].predict(X_valid).reshape(-1, 1)
-            error = mean_absolute_error(pred, y_valid).reshape(-1, 1)
+            error = mean_absolute_error(y_valid, pred).reshape(-1, 1)
             valid_pred.append(pred)
             valid_error.append(error)
 
@@ -176,9 +176,9 @@ def baseModel(Sample_Train, parameters, num_boost_round, index):
     return model, valid_pred, y_valid, valid_error
 
 def metaModel(Valid_Pred, Valid_Y):
-    X_meta = Valid_Pred[0]
+    X_meta = Valid_Pred[0].reshape(-1, 1)
     y_meta = Valid_Y
-    for i in range(1, 3):
+    for i in range(1, len(Valid_Pred)):
         X_meta = np.hstack((X_meta, Valid_Pred[i]))
     dmeta = xgb.DMatrix(X_meta, label=y_meta)
     meta_parameters = {'booster': 'gbtree', 'seed': 100, 'nthread': -1, 'gamma': 0, 'lambda': 6,
@@ -197,6 +197,43 @@ def metaModel(Valid_Pred, Valid_Y):
     # plt.show()
     return meta
 
+def DSTweight(Valid_Y, Valid_Pred):
+    n = Valid_Y
+    q = Valid_Pred
+    DST_MASS = np.ones((3, 3))
+    base_model_weight = np.ones((3, 1))
+    for i in range(3):
+        # vc = q[i]
+        # vb = n
+        # # print(np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (np.std(vb) * np.std(vc)))
+        # # corrcoef得到相关系数矩阵（向量的相似程度）
+        # DST_MASS[i - 1, 0] = np.abs(np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (
+        #         np.std(vb) * np.std(vc)))
+        y_pred = q[i]
+        y_true = n
+        DST_MASS[i - 1, 1] = 1 / mean_absolute_error(y_true, y_pred)
+
+    for i in range(3):
+        y_pred = q[i]
+        y_true = n
+        DST_MASS[i - 1, 1] = 1 / mean_absolute_percentage_error(y_true, y_pred)
+
+    for i in range(3):
+        y_pred = q[i]
+        y_true = n
+        DST_MASS[i - 1, 2] = 1 / mean_squared_error(y_true, y_pred)
+
+    DST_MASS_TRANSFORMED = np.ones((3, 3))
+    for i in range(3):
+        for j in range(4):
+            DST_MASS_TRANSFORMED[i - 1, j - 1] = DST_MASS[i - 1, j - 1] / np.sum(DST_MASS[:, j - 1])
+    K = 0
+    for i in range(3):
+        K = K + DST_MASS_TRANSFORMED[i - 1, :].prod()
+    for i in range(3):
+        base_model_weight[i - 1] = DST_MASS_TRANSFORMED[i - 1, :].prod() / K
+    return base_model_weight
+
 Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
 Valid_Y = np.empty((0, 1))
 Valid_Error = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
@@ -211,18 +248,24 @@ def modelTrain(Sample_Train, parameters, num_boost_round, generation):
     global Valid_Pred
     global Valid_Y
     global Valid_Error
+
+    Valid_Pred = Valid_Pred
+    Valid_Y = Valid_Y
+    Valid_Error = Valid_Error
+
     k = 5  # k-fold
     index = generation % k
-    base_model, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
-    # 每五轮的矩阵拼接
-    Valid_Y = np.vstack((Valid_Y, y_valid))
-    for i in range(3):
-        Valid_Pred[i] = np.vstack((Valid_Pred[i], valid_pred[i]))
-        Valid_Error[i] = np.vstack((Valid_Error[i], valid_error[i]))
+
     Weight = [np.ones((5, 1)), np.ones((5, 1)), np.ones((5, 1))]
-    base_model_weight = np.ones((3, 1))
     meta_model = None
+
     if index == 4:
+        base_model, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
+        # 每五轮的矩阵拼接
+        Valid_Y = np.vstack((Valid_Y, y_valid))
+        for i in range(3):
+            Valid_Pred[i] = np.vstack((Valid_Pred[i], valid_pred[i]))
+            Valid_Error[i] = np.vstack((Valid_Error[i], valid_error[i]))
         # plt.figure(figsize=(20, 10))
         # plt.xlabel('Validation Prediction')
         # plt.ylabel('Validation Label')
@@ -231,43 +274,40 @@ def modelTrain(Sample_Train, parameters, num_boost_round, generation):
         # plt.show()
         # print("one round completed")
         for i in range(3):
-            weight_coeff = (np.max(Valid_Error[i]) + np.min(Valid_Error[i]) - Valid_Error[i])
-            Weight[i] = weight_coeff / np.sum(weight_coeff)
-        m = Valid_Error
-        n = Valid_Y
-        q = Valid_Pred
-        DST_MASS = np.ones((3, 3))
-        for i in range(3):
-            vc = q[i]
-            vb = n
-            print(np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (np.std(vb) * np.std(vc)))
-            # corrcoef得到相关系数矩阵（向量的相似程度）
-            DST_MASS[i - 1, 0] = np.abs(np.mean(np.multiply((vc - np.mean(vc)), (vb - np.mean(vb)))) / (
-                        np.std(vb) * np.std(vc)))
+            # k-fold权重
+            # weight_coeff = (np.max(Valid_Error[i]) + np.min(Valid_Error[i]) - Valid_Error[i])
+            # Weight[i] = weight_coeff / np.sum(weight_coeff)
+            w = np.ones((5, 1))
+            w = w * 0.2
+            Weight[i] = w
 
-        for i in range(3):
-            y_pred = q[i]
-            y_true = n
-            DST_MASS[i - 1, 1] = 1 / max_error(y_true, y_pred)
+        # base_model_weight = DSTweight(Valid_Y, Valid_Pred)
+        # 等权重测试：
+        base_model_weight = np.array([1/3, 1/3, 1/3]).reshape(-1, 1)
 
+        # 给base model在validation上的预测值赋予权重
         for i in range(3):
-            y_pred = q[i]
-            y_true = n
-            DST_MASS[i - 1, 2] = 1 / mean_squared_error(y_true, y_pred)
+            Valid_Pred[i] = Valid_Pred[i] * base_model_weight[i]
 
-        DST_MASS_TRANSFORMED = np.ones((3, 3))
-        for i in range(3):
-            for j in range(4):
-                DST_MASS_TRANSFORMED[i - 1, j - 1] = DST_MASS[i - 1, j - 1] / np.sum(DST_MASS[:, j - 1])
-        K = 0
-        for i in range(3):
-            K = K + DST_MASS_TRANSFORMED[i - 1, :].prod()
-        for i in range(3):
-            base_model_weight[i - 1] = DST_MASS_TRANSFORMED[i - 1, :].prod() / K
+        # 合并为一列输入
+        # Valid_Pred = Valid_Pred[0] + Valid_Pred[1] + Valid_Pred[2]
+        # Valid_Pred = list(Valid_Pred)
 
         meta_model = metaModel(Valid_Pred, Valid_Y)
+
         Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
         Valid_Y = np.empty((0, 1))
         Valid_Error = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
         print(str(len(Sample_Train)) + str(base_model_weight))
+
+    else:
+        base_model, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
+        # 每五轮的矩阵拼接
+        Valid_Y = np.vstack((Valid_Y, y_valid))
+        for i in range(3):
+            Valid_Pred[i] = np.vstack((Valid_Pred[i], valid_pred[i]))
+            Valid_Error[i] = np.vstack((Valid_Error[i], valid_error[i]))
+        base_model_weight = DSTweight(Valid_Y, Valid_Pred)
+        print(str(len(Sample_Train)) + str(base_model_weight))
+
     return base_model, meta_model, index, Weight, base_model_weight
