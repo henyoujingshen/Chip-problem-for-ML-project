@@ -22,7 +22,6 @@ threshold = [60, 100]
 # generations = int((threshold[0] - sample_init)/num_cluster[0] + (threshold[1] - threshold[0])/num_cluster[1])
 generations = computations - sample_init  # 迭代次数
 cross_pb = 0.7  # 交叉概率
-mutation_eta = 0.1  # 突变概率
 select_num = 250  # 从父代中选择出的育种个体数量
 
 ts = 2  # 锦标赛一次选出ts个个体
@@ -59,8 +58,9 @@ problem_param = {
 
 # Mutation settings
 mutation_param = {
-    'mutation_prob': 1,
-    'eta': 1,
+    'mutation_prob': 0.7,
+    # 'eta': 10,
+    'p': 3,  # p~[2, 5]
     'xl': problem_param['range'][0],
     'xu': problem_param['range'][1],
 }
@@ -99,33 +99,54 @@ def mutation(individual):
     :return: 完成突变操作后的个体
     """
 
-    eta = mutation_param['eta']
-    xl = mutation_param['xl']
-    xu = mutation_param['xu']
-    xp = np.array(individual[0])  # x parents
-    u = np.random.rand(1)
+    # eta = mutation_param['eta']
+    # xl = mutation_param['xl']
+    # xu = mutation_param['xu']
+    # xp = np.array(individual[0])  # x parents
+    # u = np.random.rand(1)
+    # prob = np.random.rand(1)
+    #
+    # if prob > mutation_param['mutation_prob']:
+    #     return individual
+    # else:
+    #     if u <= 0.5:
+    #         sigma = 2 * u + (1 - 2 * u) * np.power(1 - (xp - xl) / (xu - xl), eta + 1) - 1
+    #         Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
+    #     else:
+    #         sigma = 1 - np.power(2 * (1 - u) + (2 * u - 1) * (1 - (xu - xp) / (xu - xl)), eta + 1)
+    #         Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
+    #
+    #     # Sigma = Sigma - 0.5
+    #     xo = xp + Sigma * (xu - xl)
+    #     # if xo.any() <= xl or xo.any() >= xu:  # x offspring
+    #     # print("Bound detected")
+    #     xo = np.clip(xo, a_min=xl, a_max=xu)
+    #     individual[0] = xo.tolist()
+    #     if np.isnan(xo).any():
+    #         print("failed")
+    #     return individual
+
+    # -------------------------------------------
+
+    r = np.random.rand(1)
+    p = mutation_param['p']
+    ak = mutation_param['xl']
+    bk = mutation_param['xu']
     prob = np.random.rand(1)
+    t = 1   # generations!!!!!
+    T = computations
 
     if prob > mutation_param['mutation_prob']:
         return individual
     else:
-        if u <= 0.5:
-            sigma = 2 * u + (1 - 2 * u) * np.power(1 - (xp - xl) / (xu - xl), eta + 1) - 1
-            # Sigma = np.power(sigma, 1 / (eta + 1))
-            Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
-        else:
-            sigma = 1 - np.power(2 * (1 - u) + (2 * u - 1) * (1 - (xu - xp) / (xu - xl)), eta + 1)
-            # Sigma = np.power(sigma, 1 / (eta + 1))
-            Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
-
-        # Sigma = Sigma - 0.5
-        xo = xp + Sigma * (xu - xl)
-        # if xo.any() <= xl or xo.any() >= xu:  # x offspring
-        # print("Bound detected")
-        xo = np.clip(xo, a_min=xl, a_max=xu)
-        individual[0] = xo.tolist()
-        if np.isnan(xo).any():
-            print("failed")
+        vk = np.array(individual[0])
+        h = np.array([bk-vk, vk-ak])
+        h = h * (1 - r ** (1 - t / T) ** p)
+        rand = np.rint(np.random.random((1, problem_param['dimension'])))[0]
+        rand = (np.arange(0, 2 * problem_param['dimension'], 2) + rand).astype(int)
+        result = (vk + h).ravel('F')
+        result = result[rand]
+        individual[0] = result.tolist()
         return individual
 
 
@@ -179,14 +200,15 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
     :param population: 需要进行适应度评估的种群
     :return: /
     """
+    weight = weight  # weight是k-fold模型的权重
     model_num = model_num
     base_model_weight = base_model_weight
     if model_num == 4:
         pop_array = np.vstack((population[0:]))
         dtest = xgb.DMatrix(pop_array)
-        Pred_xgb = np.empty((len(population), 1))
-        Pred_poly = np.empty((len(population), 1))
-        Pred_knn = np.empty((len(population), 1))
+        Pred_xgb = np.zeros((len(population), 1))
+        Pred_poly = np.zeros((len(population), 1))
+        Pred_knn = np.zeros((len(population), 1))
 
         for i in range(5):
             # xgb base model
@@ -208,16 +230,22 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
             Pred_xgb = np.hstack((Pred_xgb, pop_pred_xgb))
             Pred_poly = np.hstack((Pred_poly, pop_pred_poly))
             Pred_knn = np.hstack((Pred_knn, pop_pred_knn.reshape(-1, 1)))
+
         Pred_xgb = Pred_xgb[:, 1:]
         Pred_poly = Pred_poly[:, 1:]
         Pred_knn = Pred_knn[:, 1:]
 
-        Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1)
-        Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1)
-        Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1)
+        # Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1)
+        # Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1)
+        # Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1)
+
+        Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1) * base_model_weight[0]
+        Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1) * base_model_weight[1]
+        Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1) * base_model_weight[2]
 
         # Meta model here
         meta_input = np.hstack((Pred_xgb, Pred_poly, Pred_knn))
+        # meta_input = Pred_xgb + Pred_poly + Pred_knn
         meta = xgb.Booster()
         meta.load_model('meta_xgb.model')
         dmeta = xgb.DMatrix(meta_input)
@@ -246,8 +274,7 @@ def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, po
         pop_pred_knn = np.abs(model_knn.predict(pop_array)).reshape(-1, 1)
 
         # 各base model赋权重
-        pop_pred = base_model_weight[0] * pop_pred_xgb + base_model_weight[1] * pop_pred_poly + base_model_weight[
-            2] * pop_pred_knn
+        pop_pred = base_model_weight[0] * pop_pred_xgb + base_model_weight[1] * pop_pred_poly + base_model_weight[2] * pop_pred_knn
 
         for i, individual in zip(range(len(population)), population):
             individual.fitness.values = np.array(pop_pred[i]).ravel()
@@ -440,13 +467,15 @@ if __name__ == '__main__':
     Sample_Points = np.empty((0, problem_param['dimension']))
 
     Optimum = []
-    result = []
+    Resdisp = []
     for i in range(10):
         result, optimum = iterate(Sample_Train, Sample_Points, num_boost_round)
         Optimum.append(optimum)
+        Resdisp.append(optimum[-1])
         print("Minimum Test Value = ", optimum[-1])
         print(i)
 
-    print("Mean value:", np.mean(Optimum))
+    print("Mean value:", np.mean(Resdisp))
+    print("Variance value:", np.var(Resdisp))
     test = pd.DataFrame(data=Optimum, columns=result.columns.values.tolist())  # 数据有三列，列名分别为one,two,three
     test.to_csv('./Opt.csv', encoding='gbk')
