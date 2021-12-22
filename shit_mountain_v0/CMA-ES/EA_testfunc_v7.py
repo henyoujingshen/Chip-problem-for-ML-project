@@ -1,11 +1,11 @@
 import random
 import warnings
 
-import deap
+# import deap
 import cma
 import xgboost as xgb
 import pandas as pd
-from deap import base, creator, tools
+# from deap import base, creator, tools
 import numpy as np
 from matplotlib import pyplot as plt
 import lhsmdu
@@ -14,7 +14,7 @@ import pickle
 
 # import其他py文件
 import stacking_model_v7 as mt
-import DEAPchange
+# import DEAPchange
 
 # 超参数定义
 from sklearn.cluster import KMeans
@@ -45,36 +45,32 @@ base_model_cache = []
 
 # Test problem settings
 problem_param = {
-    # 'name': 'rosenbrock',
-    # 'dimension': 6,
-    # 'range': [-5, 10],
+    'name': 'rosenbrock',
+    'dimension': 6,
+    'range': [-5, 10],
 
-    'name': 'rastrigin',
-    'dimension': 8,
-    'range': [-5, 5],
+    # 'name': 'rastrigin',
+    # 'dimension': 8,
+    # 'range': [-5, 5],
 
     # 'name': 'griewank'
     # 'dimension': 10,
     # 'range': [-600, 600],
 }
 
-# Mutation settings
-mutation_param = {
-    'dimension': problem_param['dimension'],
-    'mutation_prob': 0.7,
-    'eta': 2,
-    'mu': 0,
-    'sigma': 0.5,
+# EA Algorithm settings
+CMA_ES_param = {
     'xl': problem_param['range'][0],
     'xu': problem_param['range'][1],
+    'popsize': 5 * problem_param['dimension'],
+    'sigma': 0.4,
+    'bounds': [[problem_param['range'][0]] * problem_param['dimension'],
+               [problem_param['range'][1]] * problem_param['dimension']],
+    'tolfun': 1e-6,
+    'maxfevals': 1000,
+    'verb_disp': 0
 }
 
-# Crossover settings
-crossover_param = {
-    'dimension': problem_param['dimension'],
-    'alpha': 0.2,
-    'crossover_prob': 0.7,
-}
 
 # Selection settings
 selection_param = {
@@ -91,6 +87,7 @@ computations = int(problem_param['dimension']) * 20 + 50
 sample_init = int(problem_param['dimension']) * 20
 generations = computations - sample_init
 current_generation = 0
+
 
 def testFunc(sample_array):
     """
@@ -115,51 +112,6 @@ def testFunc(sample_array):
         result = None
     y = result.reshape(-1, 1)
     return X, y
-
-
-# def mutation(individual):
-#     """
-#     定义个体突变函数，在toolbox中注册为Mutation函数
-#     polynomial mutation
-#     :param individual: 进行突变操作的个体
-#     :return: 完成突变操作后的个体
-#     """
-#
-#     eta = mutation_param['eta']
-#     xl = mutation_param['xl']
-#     xu = mutation_param['xu']
-#     xp = np.array(individual[0])  # x parents
-#     u = np.random.rand(1)
-#     prob = np.random.rand(1)
-#
-#     if prob > mutation_param['mutation_prob']:
-#         return individual
-#     else:
-#         if u <= 0.5:
-#             sigma = 2 * u + (1 - 2 * u) * np.power(1 - (xp - xl) / (xu - xl), eta + 1) - 1
-#             Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
-#         else:
-#             sigma = 1 - np.power(2 * (1 - u) + (2 * u - 1) * (1 - (xu - xp) / (xu - xl)), eta + 1)
-#             Sigma = np.sign(sigma) * np.power(np.abs(sigma), 1 / (eta + 1))
-#
-#         xo = xp + Sigma * (xu - xl)
-#         xo = np.clip(xo, a_min=xl, a_max=xu)
-#         individual[0] = xo.tolist()
-#         if np.isnan(xo).any():
-#             print("failed")
-#         return individual
-
-
-# def crossover(ind1, ind2, pb):
-#     rand = np.random.rand(1)
-#     if rand <= pb:
-#         x1 = 0.5 * ((1 + pb) * np.array(ind1[0]) + (1 - pb) * np.array(ind2[0]))
-#         x2 = 0.5 * ((1 - pb) * np.array(ind1[0]) + (1 + pb) * np.array(ind2[0]))
-#         ind1[0] = x1.tolist()
-#         ind2[0] = x2.tolist()
-#         if (np.isnan(x1).any() or np.isnan(x2).any()):
-#             print("failed")
-#     return ind1, ind2
 
 
 # Latin Hypercube Sampling
@@ -234,96 +186,6 @@ def updateBaseModel():
     base_model_cache = model_list
 
     return base_model_cache
-
-
-# def popEvaluate(base_model, meta_model, model_num, weight, base_model_weight, population):
-#     """
-#     对种群内所有个体的适应度进行评估
-#     :param population: 需要进行适应度评估的种群
-#     :return: /
-#     """
-#     # if True:
-#     #     pop_array = np.vstack((population[0:]))
-#     #     _, pop_pred = testFunc(pop_array)
-#     #     pop_pred = pop_pred.reshape(-1, 1)
-#     #
-#     #     for i, individual in zip(range(len(population)), population):
-#     #         individual.fitness.values = np.array(pop_pred[i]).ravel()
-#     #     return pop_array, pop_pred
-#
-#     model_num = model_num
-#     base_model_weight = base_model_weight
-#     if model_num == 4:
-#         pop_array = np.vstack((population[0:]))
-#         dtest = xgb.DMatrix(pop_array)
-#         Pred_xgb = np.empty((len(population), 1))
-#         Pred_poly = np.empty((len(population), 1))
-#         Pred_knn = np.empty((len(population), 1))
-#
-#         for i in range(5):
-#             # xgb base model
-#             model_xgb = xgb.Booster()
-#             model_xgb.load_model('xgb' + str(i) + '.model')
-#             pop_pred_xgb = model_xgb.predict(dtest).reshape(-1, 1)
-#             pop_pred_xgb = pop_pred_xgb * weight[0][i]
-#             # poly base model
-#             with open('poly' + str(i) + '.model', 'rb') as file:
-#                 model_poly = pickle.load(file)
-#             pop_pred_poly = np.abs(model_poly.predict(pop_array)) * weight[1][i]
-#             pop_pred_poly = pop_pred_poly.reshape(-1, 1)
-#             # knn base model
-#             with open('ada' + str(i) + '.model', 'rb') as file:
-#                 model_knn = pickle.load(file)
-#             pop_pred_knn = np.abs(model_knn.predict(pop_array)) * weight[2][i]
-#             pop_pred_knn = pop_pred_knn.reshape(-1, 1)
-#
-#             Pred_xgb = np.hstack((Pred_xgb, pop_pred_xgb))
-#             Pred_poly = np.hstack((Pred_poly, pop_pred_poly))
-#             Pred_knn = np.hstack((Pred_knn, pop_pred_knn.reshape(-1, 1)))
-#         Pred_xgb = Pred_xgb[:, 1:]
-#         Pred_poly = Pred_poly[:, 1:]
-#         Pred_knn = Pred_knn[:, 1:]
-#
-#         Pred_xgb = np.sum(Pred_xgb, axis=1).reshape(-1, 1)
-#         Pred_poly = np.sum(Pred_poly, axis=1).reshape(-1, 1)
-#         Pred_knn = np.sum(Pred_knn, axis=1).reshape(-1, 1)
-#
-#         # Meta model here
-#         meta_input = np.hstack((Pred_xgb, Pred_poly, Pred_knn))
-#         meta = xgb.Booster()
-#         meta.load_model('meta_xgb.model')
-#         dmeta = xgb.DMatrix(meta_input)
-#         meta_pred = np.abs(meta.predict(dmeta))
-#
-#         for i, individual in zip(range(len(population)), population):
-#             individual.fitness.values = np.array(meta_pred[i]).ravel()
-#         return pop_array, meta_pred
-#     else:
-#         pop_array = np.vstack((population[0:]))
-#
-#         # xgb base model
-#         model_xgb = xgb.Booster()
-#         model_xgb.load_model('xgb' + str(model_num) + '.model')
-#         dtest = xgb.DMatrix(pop_array)
-#         pop_pred_xgb = np.abs(model_xgb.predict(dtest)).reshape(-1, 1)
-#
-#         # poly base model
-#         with open('poly' + str(model_num) + '.model', 'rb') as file:
-#             model_poly = pickle.load(file)
-#         pop_pred_poly = np.abs(model_poly.predict(pop_array)).reshape(-1, 1)
-#
-#         # ada base model
-#         with open('ada' + str(model_num) + '.model', 'rb') as file:
-#             model_knn = pickle.load(file)
-#         pop_pred_knn = np.abs(model_knn.predict(pop_array)).reshape(-1, 1)
-#
-#         # 各base model赋权重
-#         pop_pred = base_model_weight[0] * pop_pred_xgb + base_model_weight[1] * pop_pred_poly + base_model_weight[
-#             2] * pop_pred_knn
-#
-#         for i, individual in zip(range(len(population)), population):
-#             individual.fitness.values = np.array(pop_pred[i]).ravel()
-#         return pop_array, pop_pred
 
 
 def sampleSelect(pop_array, pop_pred, sample_Train):
@@ -508,9 +370,6 @@ def CMA_ES(pop_array):
         sigma0: initial standard deviation to sample new solutions
         :return: /
     """
-    dim = problem_param['dimension']
-    xl = problem_param['range'][0]
-    xu = problem_param['range'][1]
 
     pop_children = []
     pop_best = []
@@ -526,107 +385,26 @@ def CMA_ES(pop_array):
     # fun = cma.ff.rastrigin
 
     x0 = pop_array[init_index, :]
-    sigma0 = 0.5
-    bounds = [[xl] * dim, [xu] * dim]
-    x_best, es = cma.fmin2(fun, x0, sigma0,
-                           {'popsize': 5 * dim,
-                            'bounds': bounds,
-                            'tolfun': 1e-6,
-                            'maxfevals': 1000,
-                            'verb_disp': 0
+    x_best, es = cma.fmin2(fun, x0, CMA_ES_param['sigma'],
+                           {'popsize': CMA_ES_param['popsize'],
+                            'bounds': CMA_ES_param['bounds'],
+                            'tolfun': CMA_ES_param['tolfun'],
+                            'maxfevals': CMA_ES_param['maxfevals'],
+                            'verb_disp': CMA_ES_param['verb_disp'],
                             })
     pop_best.append(x_best)
     pred_best.append(es.result.fbest)
     pop_children.append(es.pop_sorted)
 
     pop_children = np.array(pop_children[0])
-    pop_children = np.clip(pop_children, a_min=xl, a_max=xu)
+    pop_children = np.clip(pop_children, a_min=CMA_ES_param['xl'], a_max=CMA_ES_param['xu'
+                                                                                      ''])
     pred_children = []
     for j in range(pop_children.shape[0]):
         pred_children.append(popEvaluate(pop_children[j, :]))
     pred_children = np.array(pred_children).reshape(-1, 1)
 
     return pop_children, np.array(pred_children), np.array(pop_best), np.array(pred_best)
-
-
-# def EAiterate(base_model, meta_model, model_num, weight, base_model_weight, EAgenerations):
-#     # 初始化种群，同时将种群采样index重置为0
-#     # pop = toolbox.Population(n=pop_init)  # 种群定义为pop
-#     # global cnt_p
-#     # cnt_p = 0
-#     # # 对初始化的种群进行个体适应度评估
-#     # popEvaluate(base_model=base_model, meta_model=meta_model, model_num=model_num, weight=weight,
-#     #             base_model_weight=base_model_weight, population=pop)
-#     # # 演化算法迭代
-#     # for g in range(EAgenerations):
-#     #     # 从种群中选出部分优势个体作为育种父代
-#     #     pop_f = deap.tools.selStochasticUniversalSampling(pop, k=select_num, fit_attr='fitness')
-#     #     # 育种父代混合交叉
-#     #     pop_cross = [toolbox.clone(individual) for individual in pop_f]
-#     #
-#     #     # 全排列随机抽取编码crossover
-#     #     crossover_index = DEAPchange.crossoverIndexing(pop=pop_cross)
-#     #     crossover_index = list(crossover_index.T)
-#     #     crossover_index = random.sample(crossover_index, 3 * len(pop_cross))
-#     #     pop_mutation = []
-#     #
-#     #     for i in range(0, len(crossover_index)):
-#     #         pop_cross_1 = pop_cross[crossover_index[i][0]]
-#     #         pop_cross_2 = pop_cross[crossover_index[i][1]]
-#     #         toolbox.Crossover(ind1=pop_cross_1,
-#     #                           ind2=pop_cross_2,
-#     #                           alpha=crossover_param['alpha'],
-#     #                           prob=crossover_param['crossover_prob'],
-#     #                           param=problem_param)
-#     #         pop_mutation.append(pop_cross_1)
-#     #         pop_mutation.append(pop_cross_2)
-#     #
-#     #     pop_mutation = deap.tools.selStochasticUniversalSampling(pop_mutation, len(pop_cross), fit_attr='fitness')
-#     #
-#     #
-#     #     # 优势个体贪心crossover
-#     #     # pop_mutation = []
-#     #     # for i in range(int(len(pop_cross)/2)):
-#     #     #     pop_select_1 = deap.tools.selTournament(pop_cross, k=1, tournsize=3, fit_attr='fitness')
-#     #     #     pop_select_2 = deap.tools.selTournament(pop_cross, k=1, tournsize=3, fit_attr='fitness')
-#     #     #     toolbox.Crossover(ind1=pop_select_1[0],
-#     #     #                       ind2=pop_select_2[0],
-#     #     #                       alpha=crossover_param['crossover_prob'],
-#     #     #                       param=problem_param)
-#     #     #     pop_mutation.append(pop_select_1[0])
-#     #     #     pop_mutation.append(pop_select_2[0])
-#     #
-#     #     # 交叉后的个体突变
-#     #     pop_mutation = [toolbox.clone(individual) for individual in pop_mutation]
-#     #     for ind in pop_mutation:
-#     #         toolbox.Mutation(individual=ind, param=mutation_param)
-#     #     # 评估新产生的个体
-#     #     popEvaluate(base_model=base_model, meta_model=meta_model, model_num=model_num, weight=weight,
-#     #                                       base_model_weight=base_model_weight, population=pop_mutation)
-#     #     # 环境适应度选择子代
-#     #     pop_children = deap.tools.selStochasticUniversalSampling(pop_mutation, k=select_num, fit_attr='fitness')
-#     #     # pop_select = deap.tools.selTournament(pop_children, k=select_num, tournsize=3, fit_attr='fitness')
-#     #
-#     #     # 保留父代中的优势个体,与子代合并形成下一代种群(Elitist Reinsertion)
-#     #     pop_reserve = tools.selBest(pop_f, k=reserve_num)
-#     #     pop = pop_reserve + pop_children
-#     #     # ---------------------------------------------------
-#     #     pop_array, pop_pred = popEvaluate(base_model=base_model, meta_model=meta_model, model_num=model_num, weight=weight,
-#     #                 base_model_weight=base_model_weight, population=pop)
-#     #     # ---------------------------------------------------
-#     #     pop_pred = pop_pred.reshape(-1, 1)
-#     #
-#     #     # 子代和下一代种群个体和真实值查看
-#     #     # child_array = np.vstack((pop_children[0:]))
-#     #     # _, child_true = testFunc(child_array)
-#     #     # child_disp = np.hstack((child_array, child_true))
-#     #     _, pop_true = testFunc(pop_array)
-#     #     pop_true = pop_true.reshape(-1, 1)
-#     #     pop_disp = np.hstack((pop_array, pop_pred, pop_true))
-#     #
-#     #     a = 1
-#
-#     return pop_array, pop_pred
 
 
 def SAiterate(Sample_Train, Sample_Points, num_boost_round):
@@ -678,73 +456,6 @@ def SAiterate(Sample_Train, Sample_Points, num_boost_round):
     return result, optimum
 
 
-# def iterate(Sample_Train, Sample_Points, num_boost_round):
-#     # 初始化种群
-#     pop_f = toolbox.Population(n=pop_init)  # 种群定义为pop
-#     global cnt_p
-#     cnt_p = 0
-#     mt.paraInit()
-#     for generation in range(0, generations):
-#         # 训练
-#         # 采样点训练XGB代理模型
-#         # print(generation)
-#         base_model, meta_model, model_num, weight, base_model_weight = mt.modelTrain(Sample_Train, parameters,
-#                                                                                      num_boost_round, generation)
-#
-#         # 评估
-#         # 种群个体fitness评估
-#         popEvaluate(base_model=base_model, meta_model=meta_model, model_num=model_num, weight=weight,
-#                     base_model_weight=base_model_weight, population=pop_f)
-#         # toolbox.Evaluate(population=pop)
-#         # 均匀交叉
-#         pop_cross = [toolbox.clone(individual) for individual in pop_f]
-#         for i in range(0, len(pop_cross) - len(pop_cross) % 2, 2):
-#             toolbox.Crossover(ind1=pop_cross[i], ind2=pop_cross[i + 1], alpha=crossover_param['crossover_prob'], param=problem_param)
-#         # 变异
-#         pop_mutation = [toolbox.clone(individual) for individual in pop_cross]
-#         # pop_mutation = pop_cross
-#         for ind in pop_mutation:
-#             toolbox.Mutation(individual=ind, param=mutation_param)
-#         # 评估新产生的个体
-#         pop_children = pop_mutation
-#         pop_array, pop_pred = popEvaluate(base_model=base_model, meta_model=meta_model, model_num=model_num, weight=weight,
-#                     base_model_weight=base_model_weight, population=pop_children)
-#         pop_pred = pop_pred.reshape(-1, 1)
-#         # 选择
-#         # 一般用轮盘赌或锦标赛，但是此问题fitness会为负，故选用锦标赛，tournsize个体选1，跑k次
-#         # pop_select = deap.tools.selTournament(pop_children, k=select_num, tournsize=3, fit_attr='fitness')
-#         # pop_select = deap.tools.selStochasticUniversalSampling(pop_children, k=select_num, fit_attr='fitness')
-#         # pop_select = deap.tools.selLexicase(pop_children, k=select_num)
-#         pop_select = deap.tools.selStochasticUniversalSampling(pop_children, k=select_num, fit_attr='fitness')
-#         # 采样
-#         # 选择种群中的最佳点作为下一个CAE仿真采样点
-#         # 大坑注意：Best是选最小，Worst是选最大(因为初始化时优化问题设置的是最小为优)
-#         sample = sampleSelect(pop_array, pop_pred, Sample_Train)  # 选择下一个采样点
-#         # 种群选点情况测试
-#         _, pop_true = testFunc(pop_array)
-#         _, sample_true = testFunc(sample)
-#         child_array = np.vstack((pop_select[0:]))
-#         _, child_true = testFunc(child_array)
-#         sample_disp = np.hstack((sample, sample_true))
-#         pop_disp = np.hstack((pop_array, pop_pred, pop_true))
-#         child_disp = np.hstack((child_array, child_true))
-#
-#         Sample_Points = np.vstack((Sample_Points, sample))
-#         Sample_Train = np.vstack((Sample_Train, sample))
-#         # 保留父代中的优势个体
-#         pop_f = tools.selBest(pop_f, k=reserve_num)
-#         pop_f = pop_f + pop_select
-#     mt.paraInit()
-#     result, optimum = resultDisp(Sample_Points, Sample_Init, generations)
-#
-#     X, y = testFunc(Sample_Train)
-#     Samples_Disp = np.hstack((X, y))
-#     Samples_Disp = pd.DataFrame(data=Samples_Disp)
-#     Samples_Disp.to_csv('./Samples.csv', encoding='gbk')
-#
-#     return result, optimum
-
-
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
     # 使用拉丁超立方，或蒙特卡洛，或随机抽样方法生成初始种群
@@ -772,7 +483,7 @@ if __name__ == '__main__':
 
     Optimum = []
     Resdisp = []
-    for i in range(1):
+    for i in range(5):
         result, optimum = SAiterate(Sample_Train, Sample_Points, num_boost_round)
         Optimum.append(optimum)
         Resdisp.append(optimum[-1])
