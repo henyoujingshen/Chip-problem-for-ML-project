@@ -171,7 +171,7 @@ def baseModel(Sample_Train, parameters, num_boost_round, index):
     # 在validation data上进行预测，同时返回预测值和真实值
     valid_pred = []
     valid_error = []
-    for i in range(len(enabled_model)):
+    for i in range(3):
         if i == 0:
             dvalid = xgb.DMatrix(X_valid)
             pred = model[i].predict(dvalid).reshape(-1, 1)
@@ -313,7 +313,7 @@ def modelTrain(Sample_Train, parameters, num_boost_round, generation):
     if index == 4:
         base_model, base_round, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
         Base_Round = pd.concat([Base_Round, base_round], axis=0)
-        # a = Base_Round
+        a = Base_Round
         # 每五轮的矩阵拼接
         Valid_Y = np.vstack((Valid_Y, y_valid))
         for i in range(3):
@@ -331,7 +331,7 @@ def modelTrain(Sample_Train, parameters, num_boost_round, generation):
 
         meta_model, meta_round = metaModel(base_model_weight, Valid_Pred, Valid_Y)
         Meta_Round = pd.concat([Meta_Round, meta_round], axis=0)
-        # b = Meta_Round
+        b = Meta_Round
 
         Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
         Valid_Y = np.empty((0, 1))
