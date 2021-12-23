@@ -16,7 +16,7 @@ from scipy.stats import pearsonr
 from scipy.stats import spearmanr
 from sklearn.tree import DecisionTreeRegressor
 
-from EA_testfunc_PSO import enabled_model, testFunc
+from PSO_Benchmark_A import enabled_model, testFunc
 
 
 
