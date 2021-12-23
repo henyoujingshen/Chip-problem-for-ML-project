@@ -16,7 +16,7 @@ import pyswarms as ps
 # import其他py文件
 from pyswarms.single import GlobalBestPSO
 
-import stacking_model_PSO as mt
+import PSO_model_A as mt
 
 
 # 超参数定义
