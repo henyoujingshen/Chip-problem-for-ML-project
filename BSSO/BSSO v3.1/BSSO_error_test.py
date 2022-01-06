@@ -450,7 +450,8 @@ def PSO(model_num, weight, base_model_weight):
         iters=EA_param['iters'],
         model_num=model_num,
         weight=weight,
-        base_model_weight=base_model_weight)
+        base_model_weight=base_model_weight,
+        verbose=False,)
     cost = np.array(cost).reshape(1, -1)
     pos = pos.reshape(1, -1)
 
