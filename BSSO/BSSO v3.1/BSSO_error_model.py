@@ -1,0 +1,431 @@
+import torch
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+
+from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.ensemble import AdaBoostRegressor, RandomForestRegressor
+from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, mean_absolute_error
+from sklearn.model_selection import StratifiedGroupKFold, train_test_split
+from sklearn.neighbors import KNeighborsRegressor
+
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import Pipeline
+from sklearn.cluster import KMeans
+import pickle
+
+from smt.surrogate_models import KRG, RBF, QP
+
+from sklearn.tree import DecisionTreeRegressor
+
+from BSSO_error_test import enabled_model, testFunc, latin_hypercube_sampling, popEvaluate
+
+base_model = [0, 0, 0, 0, 0]
+
+err_linear = []
+err_dst = []
+err_second = []
+
+D_linear = []
+D_dst = []
+D_second = []
+
+X_sample = latin_hypercube_sampling(100)
+_, y_sample = testFunc(X_sample)
+
+def paraInit():
+    global Valid_Pred
+    global Valid_Y
+    global Valid_Error
+    global Base_Round
+    global Meta_Round
+    global base_model_weight
+    Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+    Valid_Y = np.empty((0, 1))
+    Valid_Error = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+    Base_Round = pd.DataFrame(columns=['err_m1', 'err_m2', 'err_m3', 'y_valid'])
+    Meta_Round = pd.DataFrame(columns=['err_meta', 'meta_valid'])
+    base_model_weight = np.array([1 / 3, 1 / 3, 1 / 3]).reshape(-1, 1)
+
+
+def perfTest(X_train, y_train, X_valid, y_valid):
+    # 不同base model的尝试
+    # xgboost
+    dtrain = xgb.DMatrix(X_train, label=y_train)
+    parameters = {'seed': 100, 'nthread': -1, 'gamma': 0, 'lambda': 6,
+                  'max_depth': 6, 'eta': 0.15, 'objective': 'reg:squarederror'}
+    model_xgb = xgb.train(parameters, dtrain, num_boost_round=200)
+    dvalid = xgb.DMatrix(X_valid)
+    pred_xgb = model_xgb.predict(dvalid).reshape(-1, 1)
+    error_xgb = mean_absolute_error(y_valid, pred_xgb).reshape(-1, 1)
+
+    # poly2
+    model_poly2 = Pipeline(steps=[
+        ('preprocessor', PolynomialFeatures(degree=2, include_bias=False)),
+        ('estimator', Ridge(alpha=1))
+    ])
+    model_poly2.fit(X_train, y_train)
+    pred_poly2 = model_poly2.predict(X_valid).reshape(-1, 1)
+    error_poly2 = mean_absolute_error(y_valid, pred_poly2).reshape(-1, 1)
+
+    # poly3
+    model_poly3 = Pipeline(steps=[
+        ('preprocessor', PolynomialFeatures(degree=3, include_bias=False)),
+        ('estimator', Ridge(alpha=1))
+    ])
+    model_poly3.fit(X_train, y_train)
+    pred_poly3 = model_poly3.predict(X_valid).reshape(-1, 1)
+    error_poly3 = mean_absolute_error(y_valid, pred_poly3).reshape(-1, 1)
+
+    # knn
+    model_knn = KNeighborsRegressor(n_neighbors=6)
+    model_knn.fit(X_train, y_train)
+    pred_knn = model_knn.predict(X_valid).reshape(-1, 1)
+    error_knn = mean_absolute_error(y_valid, pred_knn).reshape(-1, 1)
+
+    # decesion tree
+    model_dt = DecisionTreeRegressor(random_state=0)
+    model_dt.fit(X_train, y_train)
+    pred_dt = model_dt.predict(X_valid).reshape(-1, 1)
+    error_dt = mean_absolute_error(y_valid, pred_dt).reshape(-1, 1)
+
+    # adaboost
+    model_ada = AdaBoostRegressor(random_state=0, n_estimators=200, loss='exponential', learning_rate=0.5)
+    model_ada.fit(X_train, y_train)
+    pred_ada = model_ada.predict(X_valid).reshape(-1, 1)
+    error_ada = mean_absolute_error(y_valid, pred_ada).reshape(-1, 1)
+
+    # ramdom forest
+    model_rf = RandomForestRegressor(max_depth=3, random_state=0, n_jobs=-1, ccp_alpha=0)
+    model_rf.fit(X_train, y_train)
+    pred_rf = model_rf.predict(X_valid).reshape(-1, 1)
+    error_rf = mean_absolute_error(y_valid, pred_rf).reshape(-1, 1)
+
+    Pred = np.hstack((pred_xgb, pred_ada, pred_rf, pred_poly3, pred_poly2, pred_dt, pred_knn))
+    Error = np.hstack((error_xgb, error_ada, error_rf, error_poly3, error_poly2, error_dt, error_knn))
+
+    # return correlation coefficient and p values
+    r = np.corrcoef(Pred, rowvar=False)
+    r = pd.DataFrame(data=r, columns=['xgb', 'ada', 'rf', 'poly3', 'poly2', 'dt', 'knn'],
+                     index=['xgb', 'ada', 'rf', 'poly3', 'poly2', 'dt', 'knn'])
+    return Pred, Error, r
+
+
+def baseModel(Sample_Train, parameters, num_boost_round, index):
+
+    global base_model
+
+    k = 5
+    X, y = testFunc(Sample_Train)
+    y = y.reshape(-1, 1)
+    batch = (len(X) - index) / k + 1
+    batch = int(batch)
+    interval_start = batch * index
+    interval_end = batch * (index + 1)
+    X_valid = X[interval_start:interval_end, :]
+    y_valid = y[interval_start:interval_end]
+    X_train = np.delete(X, np.s_[interval_start:interval_end], axis=0)
+    y_train = np.delete(y, np.s_[interval_start:interval_end], axis=0)
+
+    # base model list
+    model = []
+
+    # GP base model
+    if 'GP' in enabled_model:
+        model_gp = KRG(theta0=[1e-2], nugget=1e-3, print_global=False)
+        model_gp.set_training_values(X_train, y_train)
+        model_gp.train()
+        # with open('gp' + str(index) + '.model', 'wb') as file:
+        #     pickle.dump(model_gp, file)
+        model.append(model_gp)
+
+    # poly base model
+    if 'Polynomial' in enabled_model:
+        model_poly = QP(print_global=False)
+        model_poly.set_training_values(X_train, y_train)
+        model_poly.train()
+        # with open('poly' + str(index) + '.model', 'wb') as file:
+        #     pickle.dump(model_poly, file)
+        model.append(model_poly)
+
+    if 'RBF' in enabled_model:
+        model_rbf = RBF(d0=5, print_global=False)
+        model_rbf.set_training_values(X_train, y_train)
+        model_rbf.train()
+        # with open('rbf' + str(index) + '.model', 'wb') as file:
+        #     pickle.dump(model_rbf, file)
+        model.append(model_rbf)
+
+    # 在validation data上进行预测，同时返回预测值和真实值
+    valid_pred = []
+    valid_error = []
+    for i in range(len(enabled_model)):
+        if enabled_model[i] == 'GP':
+            pred = model_gp.predict_values(X_valid).reshape(-1, 1)
+            error = np.abs(y_valid - pred).reshape(-1, 1)
+            valid_pred.append(pred)
+            valid_error.append(error)
+        elif enabled_model[i] == 'RBF':
+            pred = model_rbf.predict_values(X_valid).reshape(-1, 1)
+            error = np.abs(y_valid - pred).reshape(-1, 1)
+            valid_pred.append(pred)
+            valid_error.append(error)
+        else:
+            pred = model_poly.predict_values(X_valid).reshape(-1, 1)
+            error = np.abs(y_valid - pred).reshape(-1, 1)
+            valid_pred.append(pred)
+            valid_error.append(error)
+
+    base_round = np.hstack((valid_error[0], valid_error[1], valid_error[2], y_valid))
+    base_round = pd.DataFrame(data=base_round, columns=['err_m1', 'err_m2', 'err_m3', 'y_valid'])
+
+    base_model[index] = [model_gp, model_poly, model_rbf]
+
+    return model, base_round, valid_pred, y_valid, valid_error
+
+
+def metaModel(X, Valid_Pred, Valid_Y):
+
+    X_meta = Valid_Pred[0].reshape(-1, 1)
+    y_meta = Valid_Y
+    for i in range(1, len(Valid_Pred)):
+        X_meta = np.hstack((X_meta, Valid_Pred[i]))
+    Data = np.hstack((X_meta, y_meta))
+    Data_train, Data_valid = train_test_split(Data, train_size=0.8)
+    X_train = Data_train[:, :3]
+    y_train = Data_train[:, -1].reshape(-1, 1)
+    X_valid = Data_valid[:, :3]
+    y_valid = Data_valid[:, -1].reshape(-1, 1)
+
+    dmeta = xgb.DMatrix(X_train, label=y_train)
+    meta_parameters = {'booster': 'gbtree', 'seed': 100, 'nthread': -1, 'gamma': 0, 'lambda': 4,
+                       'max_depth': 4, 'eta': 0.14, 'objective': 'reg:squarederror'}
+    meta_num_boost_round = 270
+    # meta_parameters = {'booster': 'gblinear', 'seed': 100, 'nthread': -1, 'eta': 0.65, 'objective': 'reg:squarederror', 'lambda': 0.05}
+    # meta_num_boost_round = 600
+
+    meta = xgb.train(meta_parameters, dmeta, num_boost_round=meta_num_boost_round)
+    meta.save_model('meta_xgb.model')
+
+    # 线性加权在validation集上的效果
+
+    dX = xgb.DMatrix(X, label=y_sample)
+    pred_second = meta.predict(dX).reshape(-1, 1)
+    D_second.append(pred_second)
+    # error_second = np.abs(pred_second - y_sample)
+    error_second = mean_squared_error(y_sample, pred_second)
+    err_second.append(np.mean(error_second))
+
+    dvalid = xgb.DMatrix(X_valid, label=y_valid)
+    pred_valid = meta.predict(dvalid).reshape(-1, 1)
+    error = np.abs(pred_valid - y_valid)
+
+
+    meta_round = np.hstack((error, y_valid))
+    meta_round = pd.DataFrame(data=meta_round, columns=['err_meta', 'meta_valid'])
+
+    # g_train = range(len(pred_train))
+    # plt.figure(figsize=(20, 10))
+    # plt.xlabel('Train Samples')
+    # plt.ylabel('Train Pred')
+    # plt.plot(g_train, pred_train, 'b-', lw=2)
+    # plt.plot(g_train, y_train, 'r-', lw=2)
+    # plt.show()
+    #
+    # g_valid = range(len(pred_valid))
+    # plt.figure(figsize=(20, 10))
+    # plt.xlabel('Valid Samples')
+    # plt.ylabel('Valid Pred')
+    # plt.plot(g_valid, pred_valid, 'b-', lw=2)
+    # plt.plot(g_valid, y_valid, 'r-', lw=2)
+    # plt.show()
+    return meta, meta_round
+
+
+def DSTweight(Valid_Y, Valid_Pred):
+    DST_MASS = np.zeros((3, 3))
+
+    Valid_Pred_DST = np.squeeze(np.array(Valid_Pred)).T
+
+    # Step-01 construct DST matrix
+    for i in range(3):
+        DST_MASS[i, 0] = mean_absolute_error(Valid_Y, Valid_Pred_DST[:, i])
+        DST_MASS[i, 1] = mean_absolute_percentage_error(Valid_Y, Valid_Pred_DST[:, i])
+        DST_MASS[i, 2] = mean_squared_error(Valid_Y, Valid_Pred_DST[:, i])
+    DST_MASS = 1 / DST_MASS
+
+    # Step-02 normalize DST matrix
+    DST_colsum = np.sum(DST_MASS, axis=0)
+    DST_MASS_TRANSFORMED = DST_MASS / DST_colsum
+
+    # Step-03 calculate the sum of row prod
+    DST_rowprod = np.prod(DST_MASS_TRANSFORMED, axis=1)
+    base_model_weight = DST_rowprod / np.sum(DST_rowprod)
+
+    return base_model_weight
+
+
+def naiveWeight(Valid_Y, Valid_Pred):
+    base_model_weight = np.ones((3, 1))
+    error_xgb = 1 / mean_squared_error(Valid_Y, Valid_Pred[0])
+    error_poly = 1 / mean_squared_error(Valid_Y, Valid_Pred[1])
+    error_knn = 1 / mean_squared_error(Valid_Y, Valid_Pred[2])
+    error_model = [error_xgb, error_poly, error_knn]
+    base_model_weight_coeff = []
+    for i in range(3):
+        base_model_weight_coeff.append((np.max(error_model) + np.min(error_model) - error_model[i]))
+    for i in range(3):
+        base_model_weight[i] = base_model_weight_coeff[i] / np.sum(base_model_weight_coeff)
+
+    return base_model_weight
+
+
+Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+Valid_Y = np.empty((0, 1))
+Valid_Error = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+Base_Round = pd.DataFrame(columns=['err_m1', 'err_m2', 'err_m3', 'y_valid'])
+Meta_Round = pd.DataFrame(columns=['err_meta', 'meta_valid'])
+base_model_weight = np.array([1 / 3, 1 / 3, 1 / 3])
+
+
+def modelTrain(Sample_Train, parameters, num_boost_round, generation):
+    """
+    k-fold要求初始采样点是几十一个
+    根据训练种群，训练XGBoost代理模型，同时将模型保存为xgb.model文件
+    :param generation: 正在进行的迭代次数
+    :return: /
+    """
+    global Valid_Pred
+    global Valid_Y
+    global Valid_Error
+    global Base_Round
+    global Meta_Round
+    global base_model_weight
+
+    k = 5  # k-fold
+    index = generation % k
+
+    Weight = [np.ones((5, 1)), np.ones((5, 1)), np.ones((5, 1))]
+    meta_model = None
+
+    if index == 4:
+        a = generation
+        base_model, base_round, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
+        Base_Round = pd.concat([Base_Round, base_round], axis=0)
+        # a = Base_Round
+        # 每五轮的矩阵拼接
+        Valid_Y = np.vstack((Valid_Y, y_valid))
+        for i in range(3):
+            Valid_Pred[i] = np.vstack((Valid_Pred[i], valid_pred[i]))
+            Valid_Error[i] = np.vstack((Valid_Error[i], valid_error[i]))
+        for i in range(3):
+            # k-fold权重
+            w = np.ones((5, 1))
+            w = w * 0.2
+            Weight[i] = w
+
+        naive_weight = naiveWeight(Valid_Y, Valid_Pred)
+        base_model_weight = DSTweight(Valid_Y, Valid_Pred)
+
+        X = err_test(model_num=4, pop_array=X_sample, dst_weight=base_model_weight, naive_weight=naive_weight)
+
+        meta_model, meta_round = metaModel(X, Valid_Pred, Valid_Y)
+        Meta_Round = pd.concat([Meta_Round, meta_round], axis=0)
+
+        Valid_Pred = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+        Valid_Y = np.empty((0, 1))
+        Valid_Error = [np.empty((0, 1)), np.empty((0, 1)), np.empty((0, 1))]
+        print(str(len(Sample_Train)) + str(base_model_weight))
+
+    else:
+        base_model, base_round, valid_pred, y_valid, valid_error = baseModel(Sample_Train, parameters, num_boost_round, index)
+        Base_Round = pd.concat([Base_Round, base_round], axis=0)
+        a = Base_Round
+
+        # 每五轮的矩阵拼接
+        Valid_Y = np.vstack((Valid_Y, y_valid))
+        for i in range(3):
+            Valid_Pred[i] = np.vstack((Valid_Pred[i], valid_pred[i]))
+            Valid_Error[i] = np.vstack((Valid_Error[i], valid_error[i]))
+        base_model_weight = DSTweight(Valid_Y, Valid_Pred)
+        print(str(len(Sample_Train)) + str(base_model_weight))
+
+    return base_model, meta_model, index, Weight, base_model_weight
+
+
+def plot_err():
+    x = range(len(err_second))
+    plt.figure(figsize=(10.24, 7.68))
+    plt.xlabel('Generation')
+    plt.ylabel('Error')
+    plt.plot(x, err_linear, 'b-', lw=2, label='Linear weight')
+    # plt.plot(x, err_dst, 'r-', lw=2, label='DST weight')
+    plt.plot(x, err_second, 'g-', lw=2, label='Second-layer model')
+    plt.legend()
+    plt.show()
+    plt.close()
+
+    x1 = X_sample[:, 0].ravel()
+    x2 = X_sample[:, 1].ravel()
+    y1 = np.array(D_linear[0].ravel())
+    y2 = np.array(D_dst[0])
+    y3 = np.array(D_second[0].ravel())
+    y_real = y_sample.ravel()
+
+    fig = plt.figure(figsize=(19.20, 10.80))
+    ax = Axes3D(fig)
+    ax.plot_trisurf(x1, x2, y1, alpha=0.5, color='orange', label='linear weight')
+    ax.plot_trisurf(x1, x2, y_real, alpha=0.3, cmap='winter', label='real')
+    plt.show()
+    plt.close()
+
+    fig = plt.figure(figsize=(19.20, 10.80))
+    ax = Axes3D(fig)
+    ax.plot_trisurf(x1, x2, y2, alpha=0.5, color='orange', label='dst weight')
+    ax.plot_trisurf(x1, x2, y_real, alpha=0.3, cmap='winter', label='real')
+    plt.show()
+    plt.close()
+
+    fig = plt.figure(figsize=(19.20, 10.80))
+    ax = Axes3D(fig)
+    ax.plot_trisurf(x1, x2, y3, alpha=0.5, color='orange', label='second-layer weight')
+    ax.plot_trisurf(x1, x2, y_real, alpha=0.3, cmap='winter', label='real')
+    plt.show()
+    plt.close()
+
+
+
+def err_test(model_num, pop_array, dst_weight, naive_weight):
+    model_gp = base_model[model_num][0]
+    gp_pred = model_gp.predict_values(pop_array)
+    pop_pred_gp = gp_pred.reshape(-1, 1)
+
+    # poly base model
+    model_poly = base_model[model_num][1]
+    poly_pred = model_poly.predict_values(pop_array)
+    pop_pred_poly = poly_pred.reshape(-1, 1)
+
+    # rbf base model
+    model_rbf = base_model[model_num][2]
+    rbf_pred = model_rbf.predict_values(pop_array)
+    pop_pred_rbf = rbf_pred.reshape(-1, 1)
+
+    # Error test
+    X = np.hstack((pop_pred_gp, pop_pred_poly, pop_pred_rbf))
+
+    pred_linear = np.matmul(X, naive_weight)
+    D_linear.append(pred_linear)
+    # error_linear = np.abs(pred_linear - y_sample)
+    error_linear = mean_squared_error(y_sample, pred_linear)
+    err_linear.append(np.mean(error_linear))
+
+
+    pred_dst = np.matmul(X, dst_weight)
+    D_dst.append(pred_dst)
+    # error_dst = np.abs(pred_dst - y_sample)
+    error_dst = mean_squared_error(y_sample, pred_dst)
+    err_dst.append(np.mean(error_dst))
+
+    return X
