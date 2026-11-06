@@ -58,3 +58,8 @@ EA_XGB_cluster_OptPoint_v3
 global Valid_Pred
     global Valid_Y
     global Valid_Error
+
+
+## Project guide
+
+See [GETTING_STARTED.md](GETTING_STARTED.md) for a map of the experiments, a suggested regression example, and dataset/environment notes. The original algorithm history above is retained.
